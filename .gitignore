@@ -1,0 +1,9 @@
+node_modules/
+dist/
+.env
+
+# local test pages are copyrighted, never commit them
+dev/pages/
+dev/pages.json
+dev/harness.js
+dev/fonts/

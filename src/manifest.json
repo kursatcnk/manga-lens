@@ -1,0 +1,50 @@
+{
+  "manifest_version": 3,
+  "name": "Manga Lens",
+  "version": "0.1.0",
+  "description": "Manga ve çizgi roman sayfalarını okuduğun yerde Türkçeye çevirir.",
+  "permissions": ["storage"],
+  "host_permissions": ["<all_urls>"],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["fonts/*"],
+      "matches": ["<all_urls>"]
+    }
+  ],
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  },
+  "action": {
+    "default_title": "Manga Lens",
+    "default_icon": {
+      "16": "icons/16.png",
+      "32": "icons/32.png",
+      "48": "icons/48.png",
+      "128": "icons/128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/16.png",
+    "32": "icons/32.png",
+    "48": "icons/48.png",
+    "128": "icons/128.png"
+  },
+  "commands": {
+    "scan": {
+      "suggested_key": { "default": "Alt+Shift+T" },
+      "description": "Ekranı tara ve çevir"
+    }
+  }
+}
