@@ -1,6 +1,8 @@
 import { analyze } from "./detect/analyze";
+import { loadGlossary, saveGlossary } from "./shared/glossary";
 import type { PortMessage, Prefs, Reply, Request, TabMessage, TranslateJob } from "./shared/messages";
 import { loadSettings, saveSettings } from "./shared/settings";
+import { cacheSet, pruneCache } from "./translate/cache";
 import { translate } from "./translate/run";
 
 // Capture and detect are separate calls so the page can start the scan animation
@@ -32,11 +34,22 @@ async function handle(msg: Request, sender: chrome.runtime.MessageSender): Promi
       return null;
     case "prefs": {
       const s = await loadSettings();
-      const prefs: Prefs = { target: s.target, auto: s.auto };
+      const prefs: Prefs = { target: s.target, auto: s.auto, logo: s.logo, hiddenSites: s.hiddenSites };
       return prefs;
     }
     case "save-prefs":
       await saveSettings(msg.prefs);
+      return null;
+    case "glossary":
+      return loadGlossary(msg.series);
+    case "save-glossary": {
+      const g = await loadGlossary(msg.series);
+      await saveGlossary(msg.series, { ...g, terms: msg.terms });
+      return null;
+    }
+    case "remember":
+      // the user fixed a bubble by hand, that wins over the model next time
+      await cacheSet(msg.key, msg.text);
       return null;
   }
 }
@@ -77,6 +90,8 @@ chrome.action.onClicked.addListener((tab) => toggle(tab.id));
 chrome.commands.onCommand.addListener((command, tab) => {
   if (command === "scan") toggle(tab?.id);
 });
+
+chrome.runtime.onStartup.addListener(() => void pruneCache());
 
 chrome.runtime.onInstalled.addListener(async ({ reason }) => {
   if (reason !== "install") return;

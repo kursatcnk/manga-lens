@@ -1,13 +1,17 @@
+import { addTerms, loadGlossary, saveGlossary } from "../shared/glossary";
 import type { PortMessage, TranslateJob } from "../shared/messages";
 import { loadSettings, type Settings } from "../shared/settings";
+import { addUsage } from "../shared/usage";
 import { cacheGet, cacheSet, regionHash } from "./cache";
 import { JsonLines } from "./jsonl";
-import { buildRequest } from "./prompt";
-import { streamTranslation, TranslateError } from "./providers";
+import { buildRequest, type Extras } from "./prompt";
+import { modelOf, streamTranslation, TranslateError } from "./providers";
 
 // Bubbles per request. Output length is what makes it slow, so a few small
 // requests in parallel finish much sooner than one long one.
 const GROUP = 3;
+// how many earlier lines go along as context
+const RECENT = 8;
 
 type Regions = TranslateJob["regions"];
 
@@ -17,14 +21,14 @@ export async function translate(shot: ImageBitmap, job: TranslateJob, send: (m: 
     const settings = await loadSettings();
 
     const keys = await Promise.all(job.regions.map(async (r) => `${job.source}>${job.target}:${await regionHash(shot, r.text)}`));
-    const cached = await cacheGet(keys);
+    const cached = job.fresh ? {} : await cacheGet(keys);
 
     const todo: Regions = [];
     const keyOf = new Map<number, string>();
     job.regions.forEach((r, i) => {
       keyOf.set(r.id, keys[i]);
       const hit = cached[keys[i]];
-      if (hit !== undefined) send({ type: "item", id: r.id, text: hit });
+      if (hit !== undefined) send({ type: "item", id: r.id, text: hit, key: keys[i] });
       else todo.push(r);
     });
 
@@ -33,26 +37,46 @@ export async function translate(shot: ImageBitmap, job: TranslateJob, send: (m: 
       return;
     }
 
+    const glossary = await loadGlossary(job.series);
+    const extras: Extras = { terms: glossary.terms, recent: glossary.recent, honorifics: settings.honorifics };
+
     // already in reading order, so neighbours end up in the same group
     const groups: Regions[] = [];
     for (let i = 0; i < todo.length; i += GROUP) groups.push(todo.slice(i, i + GROUP));
 
     let first = 0;
     const left = new Set(todo.map((r) => r.id));
+    const texts = new Map<number, string>();
+    const names: [string, string][] = [];
+
     const onItem = (id: number, text: string) => {
       if (!left.has(id)) return;
       left.delete(id);
       first ||= performance.now();
-      send({ type: "item", id, text });
-      if (text) void cacheSet(keyOf.get(id)!, text);
+      texts.set(id, text);
+      const key = keyOf.get(id)!;
+      send({ type: "item", id, text, key });
+      if (text) void cacheSet(key, text);
     };
 
-    const results = await Promise.allSettled(groups.map((g) => translateGroup(shot, settings, { ...job, regions: g }, onItem, signal)));
+    const results = await Promise.allSettled(
+      groups.map((g) => translateGroup(shot, settings, { ...job, regions: g }, extras, onItem, (n) => names.push(n), signal)),
+    );
     if (signal.aborted) return;
 
     console.info(
       `[manga-lens] ${todo.length} bubbles in ${groups.length} requests, first after ${Math.round(first - started)}ms, all in ${Math.round(performance.now() - started)}ms`,
     );
+
+    // remember new names and the last lines for the next page of this series
+    const lines = todo.map((r) => texts.get(r.id)).filter((t): t is string => !!t);
+    if (lines.length || names.length) {
+      const fresh = await loadGlossary(job.series);
+      await saveGlossary(job.series, {
+        terms: addTerms(fresh.terms, names),
+        recent: [...fresh.recent, ...lines].slice(-RECENT),
+      });
+    }
 
     // one group failing shouldn't throw away the others, but if all of them failed say why
     const failed = results.filter((r): r is PromiseRejectedResult => r.status === "rejected");
@@ -67,13 +91,25 @@ export async function translate(shot: ImageBitmap, job: TranslateJob, send: (m: 
   }
 }
 
-async function translateGroup(shot: ImageBitmap, settings: Settings, job: TranslateJob, onItem: (id: number, text: string) => void, signal: AbortSignal) {
-  const { image, prompt } = await buildRequest(shot, job);
+async function translateGroup(
+  shot: ImageBitmap,
+  settings: Settings,
+  job: TranslateJob,
+  extras: Extras,
+  onItem: (id: number, text: string) => void,
+  onName: (name: [string, string]) => void,
+  signal: AbortSignal,
+) {
+  const { image, prompt } = await buildRequest(shot, job, extras);
 
   let raw = "";
   let got = 0;
   const parser = new JsonLines((item) => {
-    const { id, text } = item as { id?: unknown; text?: unknown };
+    const { id, text, name, as } = item as { id?: unknown; text?: unknown; name?: unknown; as?: unknown };
+    if (typeof name === "string" && typeof as === "string") {
+      onName([name, as]);
+      return;
+    }
     // ids in the prompt are 1-based positions in this group
     const region = typeof id === "number" ? job.regions[id - 1] : undefined;
     if (!region || typeof text !== "string") return;
@@ -81,11 +117,12 @@ async function translateGroup(shot: ImageBitmap, settings: Settings, job: Transl
     onItem(region.id, text);
   });
 
-  await streamTranslation(settings, image, prompt, (t) => {
+  const tokens = await streamTranslation(settings, image, prompt, (t) => {
     raw += t;
     parser.push(t);
   }, signal);
   parser.end();
+  void addUsage(modelOf(settings), tokens.input, tokens.output, got);
 
   // nothing came back in the expected format, keep the answer around for debugging
   if (!got) console.warn("[manga-lens] no usable lines in answer:", raw.slice(0, 500));

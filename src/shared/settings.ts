@@ -8,6 +8,10 @@ export interface Settings {
   geminiModel: string;
   target: string;
   auto: boolean;
+  logo: "auto" | "always" | "never";
+  hiddenSites: string[];
+  // -san, -kun, senpai... keep them as they are or turn them into Turkish
+  honorifics: "keep" | "adapt";
 }
 
 export const CLAUDE_MODELS = ["claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"];
@@ -29,6 +33,9 @@ const DEFAULTS: Settings = {
   geminiModel: GEMINI_MODELS[0],
   target: "tr",
   auto: false,
+  logo: "auto",
+  hiddenSites: [],
+  honorifics: "keep",
 };
 
 export async function loadSettings(): Promise<Settings> {

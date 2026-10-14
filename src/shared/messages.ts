@@ -12,6 +12,7 @@ export interface Region {
   lines: Rect[];
   round: boolean;
   bg: string;
+  dark: boolean; // white text on a black bubble
 }
 
 export interface ScanResult {
@@ -23,6 +24,15 @@ export interface ScanResult {
 export interface Prefs {
   target: string;
   auto: boolean;
+  logo: "auto" | "always" | "never";
+  hiddenSites: string[];
+}
+
+export interface Glossary {
+  // one "original = translation" per line, written by hand or learned from the model
+  terms: string;
+  // last few translated lines, so the next page keeps the same voice
+  recent: string[];
 }
 
 export type Request =
@@ -30,7 +40,10 @@ export type Request =
   | { type: "detect" }
   | { type: "options" }
   | { type: "prefs" }
-  | { type: "save-prefs"; prefs: Partial<Prefs> };
+  | { type: "save-prefs"; prefs: Partial<Prefs> }
+  | { type: "glossary"; series: string }
+  | { type: "save-glossary"; series: string; terms: string }
+  | { type: "remember"; key: string; text: string };
 
 export type TabMessage = { type: "toggle" };
 
@@ -41,11 +54,14 @@ export interface TranslateJob {
   regions: { id: number; text: Rect; bubble: Rect; limit: number }[];
   source: string;
   target: string;
+  series: string;
+  // skip the cache, used by "translate this bubble again"
+  fresh?: boolean;
 }
 
 export type ErrorCode = "no-key" | "auth" | "rate" | "refusal" | "other";
 
 export type PortMessage =
-  | { type: "item"; id: number; text: string }
+  | { type: "item"; id: number; text: string; key: string }
   | { type: "done"; missing: number[] }
   | { type: "error"; code: ErrorCode; message: string };

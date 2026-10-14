@@ -10,17 +10,26 @@ export class TranslateError extends Error {
 
 type OnText = (chunk: string) => void;
 
+export interface Tokens {
+  input: number;
+  output: number;
+}
+
 export function apiKey(s: Settings) {
   return s.provider === "claude" ? s.claudeKey : s.geminiKey;
 }
 
-export async function streamTranslation(s: Settings, image: string, prompt: string, onText: OnText, signal: AbortSignal) {
+export function modelOf(s: Settings) {
+  return s.provider === "claude" ? s.claudeModel : s.geminiModel;
+}
+
+export async function streamTranslation(s: Settings, image: string, prompt: string, onText: OnText, signal: AbortSignal): Promise<Tokens> {
   if (!apiKey(s)) throw new TranslateError("no-key", "API key missing");
   if (s.provider === "gemini") return gemini(s, image, prompt, onText, signal);
   return claude(s, image, prompt, onText, signal);
 }
 
-async function claude(s: Settings, image: string, prompt: string, onText: OnText, signal: AbortSignal) {
+async function claude(s: Settings, image: string, prompt: string, onText: OnText, signal: AbortSignal): Promise<Tokens> {
   // the key belongs to the user and never leaves their browser except to the API
   const client = new Anthropic({ apiKey: s.claudeKey, dangerouslyAllowBrowser: true });
 
@@ -57,6 +66,7 @@ async function claude(s: Settings, image: string, prompt: string, onText: OnText
     stream.on("text", (t) => onText(t));
     const msg = await stream.finalMessage();
     if (msg.stop_reason === "refusal") throw new TranslateError("refusal", "The model declined this page");
+    return { input: msg.usage.input_tokens, output: msg.usage.output_tokens };
   } catch (err) {
     if (err instanceof TranslateError) throw err;
     if (err instanceof Anthropic.AuthenticationError) throw new TranslateError("auth", "Invalid Claude API key");
@@ -96,6 +106,7 @@ async function gemini(s: Settings, image: string, prompt: string, onText: OnText
   // server-sent events, every "data:" line is a JSON chunk
   const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
   let buf = "";
+  const tokens = { input: 0, output: 0 };
   for (;;) {
     const { value, done } = await reader.read();
     if (done) break;
@@ -111,6 +122,13 @@ async function gemini(s: Settings, image: string, prompt: string, onText: OnText
         const parts: { text?: string }[] = cand?.content?.parts ?? [];
         const text = parts.map((p) => p.text ?? "").join("");
         if (text) onText(text);
+        // the running totals come with the chunks, the last one is the real count.
+        // thinking tokens are billed as output too
+        const u = chunk.usageMetadata;
+        if (u) {
+          tokens.input = u.promptTokenCount ?? tokens.input;
+          tokens.output = (u.candidatesTokenCount ?? 0) + (u.thoughtsTokenCount ?? 0);
+        }
         if (cand?.finishReason === "SAFETY" || cand?.finishReason === "PROHIBITED_CONTENT") {
           throw new TranslateError("refusal", "The model declined this page");
         }
@@ -119,4 +137,5 @@ async function gemini(s: Settings, image: string, prompt: string, onText: OnText
       }
     }
   }
+  return tokens;
 }
