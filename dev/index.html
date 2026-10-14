@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Manga Lens harness</title>
+    <style>
+      body { margin: 0; background: #fff; font: 14px system-ui, sans-serif; }
+      header { position: sticky; top: 0; padding: 8px 12px; background: #f3f4f7; border-bottom: 1px solid #ddd; }
+      #page { display: block; margin: 0 auto; max-width: 100%; }
+      .tail { height: 60vh; }
+    </style>
+  </head>
+  <body>
+    <header>sayfa: <select id="pick"></select> · logo ya da Alt+Shift+T</header>
+    <img id="page" alt="" />
+    <div class="tail"></div>
+    <script src="harness.js"></script>
+  </body>
+</html>
