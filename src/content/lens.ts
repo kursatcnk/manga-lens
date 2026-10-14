@@ -391,7 +391,16 @@ export class Lens {
         continue;
       }
       const box = new Box(
-        { id: ++this.seq, bubble, text: toCss(r.text), lines: r.lines.map(toCss), round: r.round, bg: r.bg, dark: r.dark },
+        {
+          id: ++this.seq,
+          bubble,
+          text: toCss(r.text),
+          lines: r.lines.map(toCss),
+          round: r.round,
+          bg: r.bg,
+          dark: r.dark,
+          shape: r.shape ? shapeToCss(r.shape, toCss) : undefined,
+        },
         fresh.length,
         { id: this.seq, text: r.text, bubble: r.bubble, limit: charLimit(bubble, r.round) },
       );
@@ -660,6 +669,19 @@ function looksLikeComic() {
     if (r.width >= 300 && r.height >= 300) return true;
   }
   return false;
+}
+
+// ölçülmüş balon şeklini de ekran pikseline çevir (her satırın sol/sağ'ı ayrı ayrı)
+function shapeToCss(s: NonNullable<ScanResult["regions"][number]["shape"]>, toCss: (r: Rect) => Rect) {
+  const rows: [number, number][] = [];
+  let y = 0;
+  for (let i = 0; i < s.rows.length; i++) {
+    const r = toCss({ x: s.rows[i][0], y: s.y + i * s.step, w: s.rows[i][1] - s.rows[i][0], h: s.step });
+    if (i === 0) y = r.y;
+    rows.push([r.x, r.x + r.w]);
+  }
+  const step = toCss({ x: 0, y: 0, w: 0, h: s.step }).h;
+  return { y, step, rows };
 }
 
 // okunur bir boyutta kabaca kaç karakter sığar

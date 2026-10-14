@@ -1,7 +1,7 @@
 import type { Rect, TranslateJob } from "../shared/messages";
 import { Anchor } from "./anchor";
 import { FONT_STACK, measure } from "./font";
-import { fitText } from "./layout";
+import { ellipseShape, fitText, maskShape, rectShape } from "./layout";
 
 export interface BoxInput {
   id: number;
@@ -11,6 +11,8 @@ export interface BoxInput {
   round: boolean;
   bg: string;
   dark: boolean;
+  // balonun ölçülmüş içi, o da CSS pikseli
+  shape?: { y: number; step: number; rows: [number, number][] };
 }
 
 // Tek bir yazı alanı: beklerken mavi vurgu, sonra orijinal satırlar balonun kendi
@@ -30,13 +32,16 @@ export class Box {
   raw = "";
   // arka plandaki önbellek anahtarı, elle düzeltme buna kaydediliyor
   key = "";
-  // yazının yerleşeceği alan, balonun içinde yüzde olarak
+  // yazının yerleşeceği alan, balonun içinde oran olarak (0-1)
   area = { x: 0, y: 0, w: 1, h: 1 };
+  // ölçülmüş şekil varsa her satırın [sol, sağ]'ı, alanın genişliğine oran olarak
+  mask: [number, number][] | null = null;
 
   // job: çeviriye giden bilgiler, ekran görüntüsü pikseliyle
   constructor(input: BoxInput, index: number, public job: TranslateJob["regions"][number]) {
     this.id = input.id;
     this.anchor = new Anchor(input.bubble);
+    this.round = input.round;
 
     const b = input.bubble;
     const t = input.text;
@@ -48,11 +53,22 @@ export class Box {
       return `left:${((x - b.x) / b.w) * 100}%;top:${((y - b.y) / b.h) * 100}%;width:${(w / b.w) * 100}%;height:${(h / b.h) * 100}%`;
     };
 
-    // Beyaz alan bazen balonun dışına taşıyor (çizgisi açık balon, arkadaki beyaz
-    // panel...). O zaman yazıyı koca alanın ortasına koyarsak orijinalin olduğu
-    // yerden kayıyor, o yüzden yazıyı orijinal metnin etrafında tutuyoruz.
-    const tooBig = b.w > t.w * 2.4 || b.h > t.h * 2.4;
-    if (tooBig) {
+    const s = input.shape;
+    if (s && s.rows.length > 3) {
+      // en iyisi: balonun içini ölçtük, yazı tam o şekle dizilecek
+      let x0 = Infinity;
+      let x1 = -Infinity;
+      for (const [l, r] of s.rows) {
+        if (l < x0) x0 = l;
+        if (r > x1) x1 = r;
+      }
+      const h = s.rows.length * s.step;
+      this.area = { x: (x0 - b.x) / b.w, y: (s.y - b.y) / b.h, w: (x1 - x0) / b.w, h: h / b.h };
+      this.mask = s.rows.map(([l, r]): [number, number] => [(l - x0) / (x1 - x0), (r - x0) / (x1 - x0)]);
+    } else if (b.w > t.w * 2.4 || b.h > t.h * 2.4) {
+      // Beyaz alan balonun dışına taşmış (çizgisi açık balon, arkadaki beyaz panel...).
+      // Yazıyı koca alanın ortasına koyarsak orijinalin yerinden kayıyor, o yüzden
+      // orijinal metnin etrafında tutuyoruz.
       const padX = t.w * 0.35;
       const padY = t.h * 0.25;
       const x = Math.max(b.x, t.x - padX);
@@ -65,7 +81,6 @@ export class Box {
       // balonun çizgisine değmesin diye biraz içeriden
       const inset = input.round ? 0.08 : 0.05;
       this.area = { x: inset, y: inset, w: 1 - inset * 2, h: 1 - inset * 2 };
-      this.round = input.round;
     }
 
     this.el.className = "box";
@@ -163,24 +178,30 @@ export class Box {
 
     const w = r.w * this.area.w;
     const h = r.h * this.area.h;
-    const fit = fitText(this.text, w, h, this.round, measure, this.lang === "tr");
+    let shape;
+    if (this.mask) shape = maskShape(this.mask.map(([l, rr]): [number, number] => [l * w, rr * w]), w, h);
+    else if (this.round) shape = ellipseShape(w, h);
+    else shape = rectShape(w, h);
 
-    const lines = document.createElement("div");
-    lines.className = "lines";
+    const fit = fitText(this.text, shape, measure, this.lang === "tr");
+    const box = document.createElement("div");
+    box.className = "lines";
     if (fit) {
-      lines.style.fontSize = `${fit.size}px`;
-      lines.style.lineHeight = `${fit.lineHeight}px`;
-      for (const line of fit.lines) {
+      box.style.fontSize = `${fit.size}px`;
+      box.style.lineHeight = `${fit.lineHeight}px`;
+      fit.lines.forEach((line, i) => {
+        // her satır kendi yerine: balon yamuksa satırlar da ona göre kayıyor
         const div = document.createElement("div");
-        div.textContent = line;
-        lines.append(div);
-      }
+        div.textContent = line.text;
+        div.style.left = `${line.center}px`;
+        div.style.top = `${fit.top + i * fit.lineHeight}px`;
+        box.append(div);
+      });
     } else {
       // balona hiç sığmıyor, hiç göstermemektense küçük göster
-      lines.style.fontSize = "7px";
-      lines.style.lineHeight = "8px";
-      lines.textContent = this.text;
+      box.classList.add("tiny");
+      box.textContent = this.text;
     }
-    this.cover.replaceChildren(lines);
+    this.cover.replaceChildren(box);
   }
 }

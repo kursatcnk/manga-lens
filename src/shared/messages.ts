@@ -13,6 +13,8 @@ export interface Region {
   round: boolean;
   bg: string;
   dark: boolean; // siyah balonda beyaz yazı
+  // balonun ölçülmüş içi: y'den başlayıp her step pikselde bir [sol, sağ]
+  shape?: { y: number; step: number; rows: [number, number][] };
 }
 
 export interface ScanResult {

@@ -18,6 +18,8 @@ export interface Detected {
   round: boolean;
   bg: string;
   dark: boolean;
+  // balonun içi satır satır ölçülmüş hali: y'den başlayıp her piksel satırı için [sol, sağ]
+  shape?: { y: number; rows: [number, number][] };
 }
 
 export function findBubbles(img: Pixels): Detected[] {
@@ -101,7 +103,7 @@ export function detectRegions(img: Pixels, dark = false): Detected[] {
     if (res.blocks.length === 1) {
       // elips kutusunun ~%78'ini doldurur, dikdörtgen kutu neredeyse hepsini
       const t = res.blocks[0];
-      found.push({ bubble: box, text: rectOf(t), lines: t.lines, round: res.fill < 0.9, bg, dark });
+      found.push({ bubble: box, text: rectOf(t), lines: t.lines, round: res.fill < 0.9, bg, dark, shape: res.shape ?? undefined });
     } else {
       // birbirine değen iki anlatım kutusu tek beyaz alan çıkıyor, yazıya göre ayır
       for (const t of res.blocks) {
@@ -189,7 +191,7 @@ function findText(lum: Uint8Array, label: Int32Array, W: number, id: number, box
   if (ink / inside < 0.01 || ink / inside > 0.4) return null;
   if (largest > inside * 0.35) return null;
 
-  let blocks = mergePieces(pieces, GAP_X, GAP_Y).filter((b) => b.ink >= 8 && b.w > 3 && b.h > 3);
+  const blocks = mergePieces(pieces, GAP_X, GAP_Y).filter((b) => b.ink >= 8 && b.w > 3 && b.h > 3);
 
   const result = [];
   for (const b of blocks) {
@@ -212,7 +214,52 @@ function findText(lum: Uint8Array, label: Int32Array, W: number, id: number, box
   }
   if (!result.length) return null;
 
-  return { blocks: result, fill: inside / size };
+  // tek yazı bloğu varsa balonun içini ölç, yazı elips varsaymadan gerçek şekle dizilsin
+  let shape = null;
+  if (result.length === 1) shape = measureInside(kind, w, h, bx, by, result[0]);
+
+  return { blocks: result, fill: inside / size, shape };
+}
+
+// Yazının ortasından başlayıp her piksel satırında balonun içi soldan sağa nereye
+// kadar gidiyor ona bakıyor. Kuyruk ya da çizgisi açık balon beyaz alanı başka yere
+// taşıyabiliyor; genişlik birden daralınca (boğaz) orada duruyoruz.
+function measureInside(kind: Uint8Array, w: number, h: number, bx: number, by: number, text: Rect) {
+  const cx = Math.round(text.x + text.w / 2 - bx);
+  const cy = Math.round(text.y + text.h / 2 - by);
+  if (cx < 0 || cx >= w || cy < 0 || cy >= h) return null;
+
+  // 1 = dışarısı, gerisi (beyaz alan ya da içindeki yazı) balonun içi
+  const spanAt = (y: number): [number, number] | null => {
+    if (kind[y * w + cx] === 1) return null;
+    let l = cx;
+    let r = cx;
+    while (l > 0 && kind[y * w + l - 1] !== 1) l--;
+    while (r < w - 1 && kind[y * w + r + 1] !== 1) r++;
+    return [l, r];
+  };
+
+  const mid = spanAt(cy);
+  if (!mid) return null;
+  let widest = mid[1] - mid[0];
+  const up: [number, number][] = [];
+  const down: [number, number][] = [];
+
+  for (let y = cy - 1; y >= 0; y--) {
+    const s = spanAt(y);
+    if (!s || s[1] - s[0] < widest * 0.35) break;
+    widest = Math.max(widest, s[1] - s[0]);
+    up.push(s);
+  }
+  for (let y = cy + 1; y < h; y++) {
+    const s = spanAt(y);
+    if (!s || s[1] - s[0] < widest * 0.35) break;
+    widest = Math.max(widest, s[1] - s[0]);
+    down.push(s);
+  }
+
+  const rows = [...up.reverse(), mid, ...down].map((s): [number, number] => [bx + s[0], bx + s[1] + 1]);
+  return { y: by + cy - up.length, rows };
 }
 
 function mergePieces(pieces: (Rect & { ink: number })[], gapX: number, gapY: number) {

@@ -26,6 +26,13 @@ export function analyze(shot: ImageBitmap): ScanResult {
     round: d.round,
     bg: d.bg,
     dark: d.dark,
+    shape: d.shape
+      ? {
+          y: d.shape.y / scale,
+          step: 1 / scale,
+          rows: d.shape.rows.map((r): [number, number] => [r[0] / scale, r[1] / scale]),
+        }
+      : undefined,
   }));
 
   return { width: shot.width, height: shot.height, regions };

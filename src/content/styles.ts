@@ -64,12 +64,14 @@ export const css = `
 .wipe, .cover { position: absolute; opacity: 0; transition: opacity .35s ease; }
 .wipe { border-radius: 3px; }
 .cover {
-  display: flex; align-items: center; justify-content: center;
   color: #111;
   font-weight: 700;
   text-align: center;
 }
-.lines > div { white-space: pre; }
+/* her satır kendi yerine konuyor (left = satırın ortası) */
+.lines { position: absolute; inset: 0; }
+.lines > div { position: absolute; translate: -50% 0; white-space: pre; }
+.lines.tiny { display: flex; align-items: center; justify-content: center; font-size: 7px; line-height: 8px; }
 .done .wipe, .done .cover { opacity: 1; }
 .layer.original .wipe, .layer.original .cover, .peek .wipe, .peek .cover { opacity: 0; }
 
@@ -191,5 +193,6 @@ export const css = `
 
 @media (prefers-reduced-motion: reduce) {
   .spin, .scanning .sweep, .hl, .logo svg { animation: none !important; }
+  .box, .hl, .wipe, .cover, .bar, .logo-wrap { transition: none !important; }
 }
 `;
