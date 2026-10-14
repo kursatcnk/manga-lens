@@ -76,8 +76,16 @@ async function claude(s: Settings, image: string, prompt: string, onText: OnText
   }
 }
 
-async function gemini(s: Settings, image: string, prompt: string, onText: OnText, signal: AbortSignal) {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${s.geminiModel}:streamGenerateContent?alt=sse`;
+// models that said no to "minimal" thinking, so we don't ask again
+const noMinimal = new Set<string>();
+
+async function gemini(s: Settings, image: string, prompt: string, onText: OnText, signal: AbortSignal): Promise<Tokens> {
+  // default thinking is "high", slow and pointless for bubbles. 3.8 Flash goes down to "low",
+  // lite models might allow "minimal", the docs don't say, so try and fall back
+  const model = s.geminiModel;
+  const level = model.includes("lite") && !noMinimal.has(model) ? "minimal" : "low";
+
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:streamGenerateContent?alt=sse`;
   const res = await fetch(url, {
     method: "POST",
     signal,
@@ -89,13 +97,16 @@ async function gemini(s: Settings, image: string, prompt: string, onText: OnText
           parts: [{ inline_data: { mime_type: "image/jpeg", data: image } }, { text: prompt }],
         },
       ],
-      // default is "high", which is slow and pointless for translating bubbles
-      generationConfig: { thinkingConfig: { thinkingLevel: "low" } },
+      generationConfig: { thinkingConfig: { thinkingLevel: level } },
     }),
   });
 
   if (!res.ok || !res.body) {
     const body = await res.text().catch(() => "");
+    if (res.status === 400 && level === "minimal" && /thinking/i.test(body)) {
+      noMinimal.add(model);
+      return gemini(s, image, prompt, onText, signal);
+    }
     if (res.status === 401 || res.status === 403 || body.includes("API_KEY_INVALID")) {
       throw new TranslateError("auth", "Invalid Gemini API key");
     }

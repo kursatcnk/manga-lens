@@ -9,9 +9,11 @@ import { modelOf, streamTranslation, TranslateError } from "./providers";
 
 // Every bubble gets its own request, all running side by side. Output length is
 // what makes it slow, so the page is done about when the slowest bubble is.
-const GROUP = 1;
-// but not too many at once, rate limits kick in fast on new API keys
-const PARALLEL = 6;
+// Gemini keys (free tier especially) have low requests-per-minute limits,
+// so there two bubbles share a request.
+const GROUP = { claude: 1, gemini: 2 };
+// not too many at once either, rate limits kick in fast on new API keys
+const PARALLEL = { claude: 6, gemini: 4 };
 // how many earlier lines go along as context
 const RECENT = 8;
 
@@ -43,8 +45,9 @@ export async function translate(shot: ImageBitmap, job: TranslateJob, send: (m: 
     const extras: Extras = { terms: glossary.terms, recent: glossary.recent, honorifics: settings.honorifics };
 
     // already in reading order, so neighbours end up in the same group
+    const size = GROUP[settings.provider];
     const groups: Regions[] = [];
-    for (let i = 0; i < todo.length; i += GROUP) groups.push(todo.slice(i, i + GROUP));
+    for (let i = 0; i < todo.length; i += size) groups.push(todo.slice(i, i + size));
 
     let first = 0;
     const left = new Set(todo.map((r) => r.id));
@@ -68,8 +71,17 @@ export async function translate(shot: ImageBitmap, job: TranslateJob, send: (m: 
     const worker = async () => {
       while (next < groups.length && !signal.aborted && !stop) {
         const i = next++;
+        const run = () => translateGroup(shot, settings, { ...job, regions: groups[i] }, extras, onItem, (n) => names.push(n), signal);
         try {
-          await translateGroup(shot, settings, { ...job, regions: groups[i] }, extras, onItem, (n) => names.push(n), signal);
+          try {
+            await run();
+          } catch (err) {
+            // hit the per-minute limit: wait a moment and give it one more go
+            if (!(err instanceof TranslateError && err.code === "rate")) throw err;
+            await new Promise((r) => setTimeout(r, 2000));
+            if (signal.aborted) return;
+            await run();
+          }
           results.push({ status: "fulfilled", value: undefined });
         } catch (reason) {
           results.push({ status: "rejected", reason });
@@ -78,7 +90,7 @@ export async function translate(shot: ImageBitmap, job: TranslateJob, send: (m: 
         }
       }
     };
-    await Promise.all(Array.from({ length: Math.min(PARALLEL, groups.length) }, worker));
+    await Promise.all(Array.from({ length: Math.min(PARALLEL[settings.provider], groups.length) }, worker));
     if (signal.aborted) return;
 
     console.info(
