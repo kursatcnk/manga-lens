@@ -1,5 +1,5 @@
 ﻿import { describe, expect, it } from "vitest";
-import { detectRegions, type Pixels } from "./heuristic";
+import { detectRegions, findBubbles, type Pixels } from "./heuristic";
 
 function canvas(w: number, h: number, gray: number): Pixels {
   const data = new Uint8ClampedArray(w * h * 4);
@@ -95,6 +95,39 @@ describe("detectRegions", () => {
 
     expect(found.map((f) => f.round)).toEqual([true, false]);
     expect(found[1].bg).toBe("#fafafa");
+  });
+
+  it("finds white text on a black bubble", () => {
+    const img = canvas(400, 240, 120);
+    paint(img, ellipse(100, 60, 50, 30), 15);
+    paint(img, words(85, 54), 250);
+
+    const found = findBubbles(img);
+
+    expect(found).toHaveLength(1);
+    expect(found[0].dark).toBe(true);
+    expect(found[0].bg).toBe("#0f0f0f");
+  });
+
+  it("doesn't take stars in a dark sky for text", () => {
+    const img = canvas(400, 240, 120);
+    paint(img, (x, y) => x > 40 && x < 220 && y > 30 && y < 200, 10);
+    // a few scattered dots
+    paint(img, (x, y) => (x % 37 === 0 && y % 29 === 0) || (x % 53 === 1 && y % 41 === 3), 255);
+
+    expect(findBubbles(img)).toHaveLength(0);
+  });
+
+  it("finds both kinds on the same page", () => {
+    const img = canvas(400, 240, 120);
+    paint(img, ellipse(100, 60, 50, 30), 255);
+    paint(img, words(85, 54), 0);
+    paint(img, ellipse(290, 150, 50, 30), 15);
+    paint(img, words(275, 144), 250);
+
+    const found = findBubbles(img).sort((a, b) => a.bubble.x - b.bubble.x);
+
+    expect(found.map((f) => f.dark)).toEqual([false, true]);
   });
 
   it("keeps the bubble, not the white panel around it", () => {

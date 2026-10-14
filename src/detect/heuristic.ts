@@ -1,7 +1,8 @@
 import type { Rect } from "../shared/messages";
 
-// Finds closed white areas with dark text inside them. Works well for white speech
-// bubbles and caption boxes. Text drawn straight on the art is not found (yet).
+// Finds closed white areas with dark text inside them (and the reverse, black bubbles
+// with white text, by running it on the inverted image). Works well for speech bubbles
+// and caption boxes. Text drawn straight on the art is not found (yet).
 
 export interface Pixels {
   width: number;
@@ -16,6 +17,14 @@ export interface Detected {
   lines: Rect[];
   round: boolean;
   bg: string;
+  dark: boolean;
+}
+
+export function findBubbles(img: Pixels): Detected[] {
+  const light = detectRegions(img, false);
+  // a dark hit that overlaps a white bubble is just the art around it
+  const dark = detectRegions(img, true).filter((d) => !light.some((l) => overlaps(l.bubble, d.bubble)));
+  return dropOuter([...light, ...dark]);
 }
 
 const WHITE = 220;
@@ -25,13 +34,14 @@ const MIN_SIDE = 12;
 const GAP_X = 10;
 const GAP_Y = 12;
 
-export function detectRegions(img: Pixels): Detected[] {
+export function detectRegions(img: Pixels, dark = false): Detected[] {
   const { width: W, height: H, data } = img;
   const n = W * H;
 
   const lum = new Uint8Array(n);
   for (let i = 0, j = 0; i < n; i++, j += 4) {
-    lum[i] = (data[j] * 77 + data[j + 1] * 150 + data[j + 2] * 29) >> 8;
+    const l = (data[j] * 77 + data[j + 1] * 150 + data[j + 2] * 29) >> 8;
+    lum[i] = dark ? 255 - l : l;
   }
 
   const label = new Int32Array(n).fill(-1);
@@ -79,15 +89,19 @@ export function detectRegions(img: Pixels): Detected[] {
     const res = findText(lum, label, W, seed, box, count);
     if (!res) continue;
 
+    // black areas are everywhere in manga (hair, night sky with stars...), so a dark
+    // bubble has to look a lot more like text: few blocks made of solid letters
+    if (dark && (res.blocks.length > 2 || res.blocks.some((t) => t.pieces < 4 || t.density < 0.08))) continue;
+
     const bg = hex(r / count, g / count, b / count);
     if (res.blocks.length === 1) {
       // an ellipse fills ~78% of its box, a caption rectangle almost all of it
-      const { lines, ...text } = res.blocks[0];
-      found.push({ bubble: box, text, lines, round: res.fill < 0.9, bg });
+      const { lines, pieces, density, ...text } = res.blocks[0];
+      found.push({ bubble: box, text, lines, round: res.fill < 0.9, bg, dark });
     } else {
       // two captions touching each other end up as one white area, split them by text
-      for (const { lines, ...text } of res.blocks) {
-        found.push({ bubble: clampTo(pad(text, 6), box), text, lines, round: false, bg });
+      for (const { lines, pieces, density, ...text } of res.blocks) {
+        found.push({ bubble: clampTo(pad(text, 6), box), text, lines, round: false, bg, dark });
       }
     }
   }
@@ -171,11 +185,17 @@ function findText(lum: Uint8Array, label: Int32Array, W: number, id: number, box
   if (!blocks.length) return null;
 
   return {
-    blocks: blocks.map(({ x, y, w, h }) => {
+    blocks: blocks.map(({ x, y, w, h, ink }) => {
       const block = { x, y, w, h };
+      const mine = pieces.filter((p) => contains(block, p));
       // letters on the same row become one line, rows have to overlap to join
-      const lines = mergePieces(pieces.filter((p) => contains(block, p)), GAP_X * 2, -1);
-      return { ...block, lines: lines.map(({ x, y, w, h }) => ({ x, y, w, h })) };
+      const lines = mergePieces(mine, GAP_X * 2, -1);
+      return {
+        ...block,
+        lines: lines.map(({ x, y, w, h }) => ({ x, y, w, h })),
+        pieces: mine.length,
+        density: ink / (w * h),
+      };
     }),
     fill: inside / size,
   };
@@ -224,6 +244,10 @@ function contains(outer: Rect, inner: Rect): boolean {
     inner.x + inner.w <= outer.x + outer.w &&
     inner.y + inner.h <= outer.y + outer.h
   );
+}
+
+function overlaps(a: Rect, b: Rect) {
+  return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 }
 
 function pad(r: Rect, p: number): Rect {
