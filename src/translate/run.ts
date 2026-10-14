@@ -7,9 +7,11 @@ import { JsonLines } from "./jsonl";
 import { buildRequest, type Extras } from "./prompt";
 import { modelOf, streamTranslation, TranslateError } from "./providers";
 
-// Bubbles per request. Output length is what makes it slow, so a few small
-// requests in parallel finish much sooner than one long one.
-const GROUP = 3;
+// Every bubble gets its own request, all running side by side. Output length is
+// what makes it slow, so the page is done about when the slowest bubble is.
+const GROUP = 1;
+// but not too many at once, rate limits kick in fast on new API keys
+const PARALLEL = 6;
 // how many earlier lines go along as context
 const RECENT = 8;
 
@@ -59,9 +61,24 @@ export async function translate(shot: ImageBitmap, job: TranslateJob, send: (m: 
       if (text) void cacheSet(key, text);
     };
 
-    const results = await Promise.allSettled(
-      groups.map((g) => translateGroup(shot, settings, { ...job, regions: g }, extras, onItem, (n) => names.push(n), signal)),
-    );
+    // simple pool: PARALLEL workers each take the next group until none are left
+    const results: PromiseSettledResult<void>[] = [];
+    let next = 0;
+    let stop = false;
+    const worker = async () => {
+      while (next < groups.length && !signal.aborted && !stop) {
+        const i = next++;
+        try {
+          await translateGroup(shot, settings, { ...job, regions: groups[i] }, extras, onItem, (n) => names.push(n), signal);
+          results.push({ status: "fulfilled", value: undefined });
+        } catch (reason) {
+          results.push({ status: "rejected", reason });
+          // a bad key fails every request the same way, no point in sending the rest
+          if (reason instanceof TranslateError && (reason.code === "auth" || reason.code === "no-key")) stop = true;
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(PARALLEL, groups.length) }, worker));
     if (signal.aborted) return;
 
     console.info(
@@ -78,9 +95,10 @@ export async function translate(shot: ImageBitmap, job: TranslateJob, send: (m: 
       });
     }
 
-    // one group failing shouldn't throw away the others, but if all of them failed say why
+    // one bubble failing shouldn't throw away the others, but if all of them failed
+    // (or a bad key stopped everything) say why
     const failed = results.filter((r): r is PromiseRejectedResult => r.status === "rejected");
-    if (failed.length === results.length) throw failed[0].reason;
+    if (failed.length && (failed.length === results.length || stop)) throw failed[0].reason;
     if (failed.length) console.error("[manga-lens] some requests failed", failed.map((f) => f.reason));
     send({ type: "done", missing: [...left] });
   } catch (err) {

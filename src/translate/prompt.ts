@@ -14,10 +14,16 @@ export interface Extras {
 // so the model can answer per box.
 export async function buildRequest(shot: ImageBitmap, job: TranslateJob, extras: Extras) {
   const all = job.regions.map((r) => r.bubble);
-  let x0 = Math.min(...all.map((r) => r.x)) - 60;
-  let y0 = Math.min(...all.map((r) => r.y)) - 60;
-  let x1 = Math.max(...all.map((r) => r.x + r.w)) + 60;
-  let y1 = Math.max(...all.map((r) => r.y + r.h)) + 60;
+  let x0 = Math.min(...all.map((r) => r.x));
+  let y0 = Math.min(...all.map((r) => r.y));
+  let x1 = Math.max(...all.map((r) => r.x + r.w));
+  let y1 = Math.max(...all.map((r) => r.y + r.h));
+  // a single bubble alone says little, show who's talking around it too
+  const margin = Math.max(60, Math.max(x1 - x0, y1 - y0) * 0.75);
+  x0 -= margin;
+  y0 -= margin;
+  x1 += margin;
+  y1 += margin;
   x0 = Math.max(0, x0);
   y0 = Math.max(0, y0);
   x1 = Math.min(shot.width, x1);

@@ -1,4 +1,4 @@
-import { CLAUDE_MODELS, GEMINI_MODELS, loadSettings, saveSettings, type Provider, type Settings } from "../shared/settings";
+import { CLAUDE_MODELS, GEMINI_MODELS, MODEL_NOTES, loadSettings, saveSettings, type Provider, type Settings } from "../shared/settings";
 import { costOf, loadUsage, monthKey } from "../shared/usage";
 
 const form = document.querySelector<HTMLFormElement>("#form")!;
@@ -15,8 +15,9 @@ const logo = $<HTMLSelectElement>("logo");
 const sites = $<HTMLUListElement>("sites");
 const saved = $("saved");
 
-claudeModel.append(...CLAUDE_MODELS.map((m) => new Option(m, m)));
-geminiModel.append(...GEMINI_MODELS.map((m) => new Option(m, m)));
+const label = (m: string) => (MODEL_NOTES[m] ? `${m} (${MODEL_NOTES[m]})` : m);
+claudeModel.append(...CLAUDE_MODELS.map((m) => new Option(label(m), m)));
+geminiModel.append(...GEMINI_MODELS.map((m) => new Option(label(m), m)));
 
 let hiddenSites: string[] = [];
 
