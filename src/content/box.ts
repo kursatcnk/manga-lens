@@ -7,17 +7,18 @@ export interface BoxInput {
   id: number;
   bubble: Rect; // viewport CSS pixels
   text: Rect;
+  lines: Rect[];
   round: boolean;
   bg: string;
 }
 
-// One text area: a blue highlight while waiting, then a covered bubble with the translation.
+// One text area: a blue highlight while waiting, then the original lines painted over
+// in the bubble's own color and the translation written on the real bubble.
 export class Box {
   readonly id: number;
   readonly el = document.createElement("div");
   readonly round: boolean;
   private readonly hl = document.createElement("div");
-  private readonly wipe = document.createElement("div");
   private readonly cover = document.createElement("div");
   private readonly anchor: Anchor;
   private text = "";
@@ -44,14 +45,20 @@ export class Box {
     this.el.style.setProperty("--d", `${index * 45}ms`);
     this.hl.className = "hl";
     this.hl.style.cssText = pct(input.text, 5);
-    // covers the original letters even where the new text is smaller
-    this.wipe.className = "wipe";
-    this.wipe.style.cssText = pct(input.text, 2) + `;background:${input.bg}`;
-    this.cover.className = this.round ? "cover round" : "cover";
-    this.cover.style.background = input.bg;
-    this.cover.style.fontFamily = FONT_STACK;
+    this.el.append(this.hl);
 
-    this.el.append(this.hl, this.wipe, this.cover);
+    // one soft patch per original line; a whole-bubble cover never lines up with the outline
+    const lines = input.lines.length ? input.lines : [input.text];
+    for (const line of lines) {
+      const wipe = document.createElement("div");
+      wipe.className = "wipe";
+      wipe.style.cssText = pct(line, 2) + `;background:${input.bg};box-shadow:0 0 3px 2px ${input.bg}`;
+      this.el.append(wipe);
+    }
+
+    this.cover.className = "cover";
+    this.cover.style.fontFamily = FONT_STACK;
+    this.el.append(this.cover);
   }
 
   place() {

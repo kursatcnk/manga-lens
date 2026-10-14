@@ -12,6 +12,8 @@ export interface Pixels {
 export interface Detected {
   bubble: Rect;
   text: Rect;
+  // each line of the original text, what actually gets painted over
+  lines: Rect[];
   round: boolean;
   bg: string;
 }
@@ -80,11 +82,12 @@ export function detectRegions(img: Pixels): Detected[] {
     const bg = hex(r / count, g / count, b / count);
     if (res.blocks.length === 1) {
       // an ellipse fills ~78% of its box, a caption rectangle almost all of it
-      found.push({ bubble: box, text: res.blocks[0], round: res.fill < 0.9, bg });
+      const { lines, ...text } = res.blocks[0];
+      found.push({ bubble: box, text, lines, round: res.fill < 0.9, bg });
     } else {
       // two captions touching each other end up as one white area, split them by text
-      for (const t of res.blocks) {
-        found.push({ bubble: clampTo(pad(t, 6), box), text: t, round: false, bg });
+      for (const { lines, ...text } of res.blocks) {
+        found.push({ bubble: clampTo(pad(text, 6), box), text, lines, round: false, bg });
       }
     }
   }
@@ -164,13 +167,21 @@ function findText(lum: Uint8Array, label: Int32Array, W: number, id: number, box
   if (ink / inside < 0.01 || ink / inside > 0.4) return null;
   if (largest > inside * 0.35) return null;
 
-  const blocks = mergePieces(pieces).filter((b) => b.ink >= 8 && b.w > 3 && b.h > 3);
+  const blocks = mergePieces(pieces, GAP_X, GAP_Y).filter((b) => b.ink >= 8 && b.w > 3 && b.h > 3);
   if (!blocks.length) return null;
 
-  return { blocks: blocks.map(({ x, y, w, h }) => ({ x, y, w, h })), fill: inside / size };
+  return {
+    blocks: blocks.map(({ x, y, w, h }) => {
+      const block = { x, y, w, h };
+      // letters on the same row become one line, rows have to overlap to join
+      const lines = mergePieces(pieces.filter((p) => contains(block, p)), GAP_X * 2, -1);
+      return { ...block, lines: lines.map(({ x, y, w, h }) => ({ x, y, w, h })) };
+    }),
+    fill: inside / size,
+  };
 }
 
-function mergePieces(pieces: (Rect & { ink: number })[]) {
+function mergePieces(pieces: (Rect & { ink: number })[], gapX: number, gapY: number) {
   const list = pieces.slice();
   let merged = true;
   while (merged) {
@@ -181,7 +192,7 @@ function mergePieces(pieces: (Rect & { ink: number })[]) {
         const b = list[j];
         const dx = Math.max(a.x, b.x) - Math.min(a.x + a.w, b.x + b.w);
         const dy = Math.max(a.y, b.y) - Math.min(a.y + a.h, b.y + b.h);
-        if (dx <= GAP_X && dy <= GAP_Y) {
+        if (dx <= gapX && dy <= gapY) {
           const x = Math.min(a.x, b.x);
           const y = Math.min(a.y, b.y);
           list[i] = {

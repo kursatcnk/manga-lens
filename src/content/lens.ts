@@ -229,7 +229,7 @@ export class Lens {
         continue;
       }
       const box = new Box(
-        { id: ++this.seq, bubble, text: toCss(r.text), round: r.round, bg: r.bg },
+        { id: ++this.seq, bubble, text: toCss(r.text), lines: r.lines.map(toCss), round: r.round, bg: r.bg },
         fresh.length,
         { id: this.seq, text: r.text, bubble: r.bubble, limit: charLimit(bubble, r.round) },
       );
@@ -265,7 +265,7 @@ export class Lens {
         drop();
       } else {
         list.forEach((b) => b.done || b.fail());
-        this.showError(m.code);
+        this.showError(m.code, m.message);
         port.disconnect();
         drop();
       }
@@ -277,7 +277,7 @@ export class Lens {
       if (run !== this.run) return;
       if (list.some((b) => !b.done && !b.failed)) {
         list.forEach((b) => b.done || b.fail());
-        this.showError("other");
+        this.showError("other", "bağlantı koptu");
       }
     });
 
@@ -306,9 +306,12 @@ export class Lens {
     this.setStatus(done < total ? `Çevriliyor… ${done}/${total}` : `${done} balon çevrildi`);
   }
 
-  private showError(code: ErrorCode) {
-    this.error = ERRORS[code];
+  private showError(code: ErrorCode, detail = "") {
+    console.warn("[manga-lens]", code, detail);
+    // the generic message alone tells nobody what went wrong
+    this.error = code === "other" && detail ? `${ERRORS[code]}: ${detail}` : ERRORS[code];
     this.setStatus(this.error, true);
+    this.status.title = detail;
     this.settings.classList.toggle("attn", code === "no-key" || code === "auth");
   }
 

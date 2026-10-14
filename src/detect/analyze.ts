@@ -22,6 +22,7 @@ export function analyze(shot: ImageBitmap): ScanResult {
     id,
     bubble: unscale(d.bubble, scale),
     text: unscale(d.text, scale),
+    lines: d.lines.map((l) => unscale(l, scale)),
     round: d.round,
     bg: d.bg,
   }));

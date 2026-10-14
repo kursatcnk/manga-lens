@@ -10,7 +10,8 @@ export const css = `
   background: rgba(8, 12, 28, .16);
   opacity: 0; transition: opacity .35s ease;
 }
-.on .dim { opacity: 1; }
+/* only while scanning, a dimmed page makes the bubbles look pasted on */
+.scanning .dim { opacity: 1; }
 
 .edge { position: fixed; inset: 0; opacity: 0; transition: opacity .5s ease; }
 .edge.glow { filter: blur(18px); }
@@ -61,15 +62,13 @@ export const css = `
 .done .hl, .failed .hl { opacity: 0; animation: none; }
 
 .wipe, .cover { position: absolute; opacity: 0; transition: opacity .35s ease; }
-.wipe { border-radius: 4px; }
+.wipe { border-radius: 3px; }
 .cover {
   display: flex; align-items: center; justify-content: center;
-  border-radius: 6px;
   color: #111;
   font-weight: 700;
   text-align: center;
 }
-.cover.round { border-radius: 50%; }
 .lines > div { white-space: pre; }
 .done .wipe, .done .cover { opacity: 1; }
 .layer.original .wipe, .layer.original .cover { opacity: 0; }
@@ -94,7 +93,7 @@ export const css = `
 .bar .brand { display: flex; align-items: center; gap: 6px; font-weight: 600; }
 .bar .brand svg { width: 18px; height: 18px; }
 .bar .arrow { opacity: .55; }
-.bar .status { min-width: 130px; opacity: .8; font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; }
+.bar .status { min-width: 130px; max-width: 420px; opacity: .8; font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; user-select: text; }
 .bar .status.err { color: #ff9aa8; opacity: 1; }
 .bar select, .bar button {
   font: inherit; color: inherit;

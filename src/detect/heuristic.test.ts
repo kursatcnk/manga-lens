@@ -44,6 +44,8 @@ describe("detectRegions", () => {
     expect(text.x + text.w).toBeLessThanOrEqual(115);
     expect(text.y + text.h).toBeLessThanOrEqual(66);
     expect(bubble.w).toBeGreaterThan(90);
+    // two rows of words -> two lines to paint over
+    expect(found[0].lines).toHaveLength(2);
   });
 
   it("ignores an empty bubble", () => {

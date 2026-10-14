@@ -9,6 +9,7 @@ export interface Region {
   id: number;
   bubble: Rect; // white area the text sits in, screenshot pixels
   text: Rect;
+  lines: Rect[];
   round: boolean;
   bg: string;
 }
