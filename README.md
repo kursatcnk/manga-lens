@@ -10,7 +10,16 @@ Okuduğun manga ya da çizgi roman sayfasını, bulunduğun yerde Türkçeye çe
 4. **Yerleşim:** Metin balonun şekline göre diziliyor. Yuvarlak balonlarda üst ve alt satırlar daha kısa tutuluyor, sığan en büyük font boyutu seçiliyor, uzun kelimeler gerekirse Türkçe hece kurallarına göre bölünüyor (HOŞ-GELDİN gibi).
 5. **Önbellek:** Çeviriler yazı alanının görüntüsüne göre saklanıyor. Aynı sayfaya dönünce tekrar istek atılmıyor.
 
-**Otomatik mod** açıkken sayfa kaydırılınca veya sonraki sayfaya geçilince ekran sessizce yeniden taranıyor. Önceden çevrilen balonlar yerinde kalıyor, sadece yeni balonlar çevriliyor.
+**Otomatik mod** açıkken sonraki sayfaya geçilince ekran sessizce yeniden taranıyor. Webtoon gibi uzun sayfalarda kaydırma bitmesini beklemeden, ekrana giren yeni balonlar çevriliyor. Önceden çevrilen balonlar yerinde kalıyor.
+
+## Diğer özellikler
+
+- **Siyah balonlar:** Geri dönüş sahnelerindeki siyah zemin üstüne beyaz yazılar da bulunuyor, çeviri yine beyaz yazılıyor.
+- **Seri sözlüğü:** Her seri için bir isim sözlüğü tutuluyor (`Akira-san = Akira Abi` gibi). Model yeni karakter isimlerini kendisi ekliyor, üst çubuktaki **Sözlük** düğmesinden düzeltilebiliyor. Önceki sayfanın son satırları da bağlam olarak gidiyor, böylece konuşmanın tonu sayfadan sayfaya kopmuyor.
+- **Balon düğmeleri:** Çevrilmiş bir balonun üstüne gelince küçük düğmeler çıkıyor: yeniden çevir, elle düzelt, orijinali göster. Elle yapılan düzeltme önbelleğe yazılıyor, o balon bir daha geldiğinde düzeltilmiş hâli görünüyor.
+- **Hitaplar:** -san, -kun, senpai gibi hitaplar olduğu gibi bırakılabiliyor ya da Türkçeleştirilebiliyor.
+- **Maliyet:** Ayarlar sayfasında bu ay kaç istek atıldığı, kaç token harcandığı ve tahmini ücret görünüyor.
+- **Logo:** Sağdaki logo sadece büyük görsel olan sayfalarda çıkıyor. Bir sitede istemiyorsan logonun köşesindeki × ile o sitede gizlenebiliyor.
 
 ## Kurulum
 
@@ -35,7 +44,8 @@ Test sayfası (`dev/`) eklenti API'lerini taklit ediyor: ekran görüntüsü yer
 
 ## Sınırlar
 
-- Sadece beyaz (veya beyaza yakın) zeminli balonlar ve kutular bulunuyor. Doğrudan çizimin üstüne yazılmış metinler ve ses efektleri şimdilik çevrilmiyor.
+- Beyaz ve siyah zeminli balonlar ve kutular bulunuyor. Doğrudan çizimin üstüne yazılmış metinler ve ses efektleri şimdilik çevrilmiyor.
+- Seri, adresteki rakamsız kısımlardan tahmin ediliyor. Seriyi adreste numarayla tutan sitelerde sözlük site geneline yazılıyor.
 - Çok küçük ya da düşük çözünürlüklü sayfalarda bazı balonlar kaçabiliyor.
 - `chrome://` sayfaları ve Chrome Web Store taranamıyor.
 

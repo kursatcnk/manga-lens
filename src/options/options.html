@@ -41,6 +41,12 @@
       .actions { display: flex; align-items: center; gap: 12px; }
       button { background: var(--accent); color: #fff; border: 0; border-radius: 8px; padding: 9px 18px; font: inherit; font-weight: 600; cursor: pointer; }
       .saved { color: #2f9e5b; }
+      ul#sites { list-style: none; margin: 0; padding: 0; }
+      ul#sites li { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--line); }
+      ul#sites button { background: transparent; color: var(--accent); padding: 2px 6px; }
+      table { width: 100%; border-collapse: collapse; font-size: 14px; }
+      th, td { text-align: left; padding: 6px 4px; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+      th { color: var(--muted); font-weight: 600; font-size: 13px; }
     </style>
   </head>
   <body>
@@ -81,8 +87,36 @@
             <option value="tr">Türkçe</option>
             <option value="en">İngilizce</option>
           </select>
-          <label><input id="auto" type="checkbox" /> Sayfa değişince otomatik çevir</label>
+          <label for="honorifics">Japonca hitaplar (-san, -kun, senpai)</label>
+          <select id="honorifics">
+            <option value="keep">Olduğu gibi kalsın</option>
+            <option value="adapt">Türkçeleştir (abi, hocam...)</option>
+          </select>
+          <label><input id="auto" type="checkbox" /> Kaydırınca ve sayfa değişince otomatik çevir</label>
           <p class="hint">Kısayol: Alt+Shift+T. Değiştirmek için chrome://extensions/shortcuts</p>
+        </section>
+
+        <section>
+          <h2>Logo</h2>
+          <label for="logo">Sağ kenardaki logo</label>
+          <select id="logo">
+            <option value="auto">Sadece manga sayfalarında göster</option>
+            <option value="always">Her sitede göster</option>
+            <option value="never">Hiç gösterme (araç çubuğu ve kısayol çalışır)</option>
+          </select>
+          <div id="sitesBox">
+            <label>Gizlenen siteler</label>
+            <ul id="sites"></ul>
+          </div>
+        </section>
+
+        <section>
+          <h2>Bu ayki kullanım</h2>
+          <table id="usage">
+            <thead><tr><th>Model</th><th>İstek</th><th>Balon</th><th>Token (girdi / çıktı)</th><th>Tahmini</th></tr></thead>
+            <tbody></tbody>
+          </table>
+          <p class="hint">Tahmini ücret, sağlayıcının liste fiyatlarına göre hesaplanır. Gerçek tutar için sağlayıcının paneline bak.</p>
         </section>
 
         <div class="actions">

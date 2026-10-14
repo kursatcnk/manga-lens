@@ -1,5 +1,5 @@
 import { analyze } from "../src/detect/analyze";
-import type { PortMessage, Prefs, Request, TabMessage, TranslateJob } from "../src/shared/messages";
+import type { Glossary, PortMessage, Prefs, Request, TabMessage, TranslateJob } from "../src/shared/messages";
 
 // Stands in for the extension APIs on the harness page. "capture" paints the test
 // image into a viewport-sized canvas like captureVisibleTab would, and translation
@@ -9,7 +9,9 @@ type Listener = (msg: TabMessage) => void;
 
 const listeners: Listener[] = [];
 let shot: ImageBitmap | null = null;
-let prefs: Prefs = { target: "tr", auto: false };
+let prefs: Prefs = { target: "tr", auto: false, logo: "always", hiddenSites: [] };
+const glossaries: Record<string, Glossary> = {};
+let fixes = 0;
 
 const SAMPLES = [
   "Hey!",
@@ -51,8 +53,8 @@ function fakePort() {
       const emit = (m: PortMessage) => open && handlers.forEach((h) => h(m));
       job.regions.forEach((r, i) => {
         setTimeout(() => {
-          const text = job.target === "en" ? "Sample translation goes here." : SAMPLES[(r.id + i) % SAMPLES.length];
-          emit({ type: "item", id: r.id, text });
+          const text = job.target === "en" ? "Sample translation goes here." : SAMPLES[(r.id + i + (job.fresh ? 3 : 0)) % SAMPLES.length];
+          emit({ type: "item", id: r.id, text, key: `fake-${r.id}` });
           if (i === job.regions.length - 1) emit({ type: "done", missing: [] });
         }, 300 + i * 220 + Math.random() * 400);
       });
@@ -79,6 +81,15 @@ const shim = {
             return { ok: true, data: null };
           case "options":
             alert("ayarlar sayfası eklentide açılır");
+            return { ok: true, data: null };
+          case "glossary":
+            return { ok: true, data: glossaries[msg.series] ?? { terms: "", recent: [] } };
+          case "save-glossary":
+            glossaries[msg.series] = { terms: msg.terms, recent: [] };
+            return { ok: true, data: null };
+          case "remember":
+            fixes++;
+            console.info("[shim] remembered fix", fixes, msg.key, msg.text);
             return { ok: true, data: null };
         }
       } catch (err) {
