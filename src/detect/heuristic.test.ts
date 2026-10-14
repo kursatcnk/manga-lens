@@ -20,7 +20,7 @@ function paint(img: Pixels, test: (x: number, y: number) => boolean, value: numb
 const ellipse = (cx: number, cy: number, rx: number, ry: number) => (x: number, y: number) =>
   ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2 <= 1;
 
-// a few short "words" in two lines
+// iki satırda birkaç kısa "kelime"
 const words = (x0: number, y0: number) => (x: number, y: number) => {
   const dx = x - x0;
   const dy = y - y0;
@@ -44,7 +44,7 @@ describe("detectRegions", () => {
     expect(text.x + text.w).toBeLessThanOrEqual(115);
     expect(text.y + text.h).toBeLessThanOrEqual(66);
     expect(bubble.w).toBeGreaterThan(90);
-    // two rows of words -> two lines to paint over
+    // iki satır kelime -> kapatılacak iki satır
     expect(found[0].lines).toHaveLength(2);
   });
 
@@ -112,7 +112,7 @@ describe("detectRegions", () => {
   it("doesn't take stars in a dark sky for text", () => {
     const img = canvas(400, 240, 120);
     paint(img, (x, y) => x > 40 && x < 220 && y > 30 && y < 200, 10);
-    // a few scattered dots
+    // dağınık birkaç nokta
     paint(img, (x, y) => (x % 37 === 0 && y % 29 === 0) || (x % 53 === 1 && y % 41 === 3), 255);
 
     expect(findBubbles(img)).toHaveLength(0);
@@ -128,6 +128,29 @@ describe("detectRegions", () => {
     const found = findBubbles(img).sort((a, b) => a.bubble.x - b.bubble.x);
 
     expect(found.map((f) => f.dark)).toEqual([false, true]);
+  });
+
+  it("doesn't take an eye for a bubble", () => {
+    // gözün beyazı, ortada büyük göz bebeği ve küçük bir parlama
+    const img = canvas(400, 240, 120);
+    paint(img, ellipse(100, 60, 30, 18), 255);
+    paint(img, ellipse(100, 62, 11, 12), 20);
+    paint(img, ellipse(96, 57, 2, 2), 255);
+
+    expect(findBubbles(img)).toHaveLength(0);
+  });
+
+  it("still finds a bubble next to an eye", () => {
+    const img = canvas(400, 240, 120);
+    paint(img, ellipse(100, 60, 30, 18), 255);
+    paint(img, ellipse(100, 62, 11, 12), 20);
+    paint(img, ellipse(280, 120, 50, 30), 255);
+    paint(img, words(265, 114), 0);
+
+    const found = findBubbles(img);
+
+    expect(found).toHaveLength(1);
+    expect(found[0].bubble.x).toBeGreaterThan(200);
   });
 
   it("keeps the bubble, not the white panel around it", () => {

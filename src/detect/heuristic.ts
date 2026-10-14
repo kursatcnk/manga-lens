@@ -1,8 +1,8 @@
 import type { Rect } from "../shared/messages";
 
-// Finds closed white areas with dark text inside them (and the reverse, black bubbles
-// with white text, by running it on the inverted image). Works well for speech bubbles
-// and caption boxes. Text drawn straight on the art is not found (yet).
+// Ekran görüntüsünde içinde koyu yazı olan kapalı beyaz alanları buluyor (resmi ters
+// çevirip bir daha bakınca siyah balondaki beyaz yazıları da). Konuşma balonlarında ve
+// anlatım kutularında iyi çalışıyor, çizimin üstüne yazılmış yazıları bulamıyor.
 
 export interface Pixels {
   width: number;
@@ -13,7 +13,7 @@ export interface Pixels {
 export interface Detected {
   bubble: Rect;
   text: Rect;
-  // each line of the original text, what actually gets painted over
+  // orijinal yazının her satırı, üstü bunlara göre kapatılıyor
   lines: Rect[];
   round: boolean;
   bg: string;
@@ -22,7 +22,7 @@ export interface Detected {
 
 export function findBubbles(img: Pixels): Detected[] {
   const light = detectRegions(img, false);
-  // a dark hit that overlaps a white bubble is just the art around it
+  // beyaz balonla çakışan siyah alan balonun etrafındaki çizimdir, onu atla
   const dark = detectRegions(img, true).filter((d) => !light.some((l) => overlaps(l.bubble, d.bubble)));
   return dropOuter([...light, ...dark]);
 }
@@ -30,14 +30,17 @@ export function findBubbles(img: Pixels): Detected[] {
 const WHITE = 220;
 const INK = 130;
 const MIN_SIDE = 12;
-// how far apart two pieces of ink can be and still be the same text block
+// iki mürekkep parçası bu kadar yakınsa aynı yazı bloğu sayılıyor
 const GAP_X = 10;
 const GAP_Y = 12;
 
 export function detectRegions(img: Pixels, dark = false): Detected[] {
-  const { width: W, height: H, data } = img;
+  const W = img.width;
+  const H = img.height;
+  const data = img.data;
   const n = W * H;
 
+  // her pikselin parlaklığı (siyah balon için ters çevrilmiş hali)
   const lum = new Uint8Array(n);
   for (let i = 0, j = 0; i < n; i++, j += 4) {
     const l = (data[j] * 77 + data[j + 1] * 150 + data[j + 2] * 29) >> 8;
@@ -51,6 +54,7 @@ export function detectRegions(img: Pixels, dark = false): Detected[] {
   for (let seed = 0; seed < n; seed++) {
     if (lum[seed] < WHITE || label[seed] !== -1) continue;
 
+    // seed'den başlayıp birbirine değen bütün beyaz pikselleri topluyoruz (flood fill)
     let sp = 0;
     let count = 0;
     let edge = false;
@@ -79,7 +83,7 @@ export function detectRegions(img: Pixels, dark = false): Detected[] {
       if (y < H - 1 && label[p + W] === -1 && lum[p + W] >= WHITE) { label[p + W] = seed; stack[sp++] = p + W; }
     }
 
-    // cut off by the screen edge, or page background / gutters
+    // ekranın kenarına değiyorsa ya sayfanın arka planı ya da yarım kalmış balon
     if (edge) continue;
     const box = { x: minX, y: minY, w: maxX - minX + 1, h: maxY - minY + 1 };
     if (box.w < MIN_SIDE || box.h < MIN_SIDE) continue;
@@ -89,19 +93,19 @@ export function detectRegions(img: Pixels, dark = false): Detected[] {
     const res = findText(lum, label, W, seed, box, count);
     if (!res) continue;
 
-    // black areas are everywhere in manga (hair, night sky with stars...), so a dark
-    // bubble has to look a lot more like text: few blocks made of solid letters
+    // siyah alan mangada her yerde var (saç, yıldızlı gökyüzü...), o yüzden siyah
+    // balonda yazının çok daha net olması lazım: az blok ve dolu harfler
     if (dark && (res.blocks.length > 2 || res.blocks.some((t) => t.pieces < 4 || t.density < 0.08))) continue;
 
     const bg = hex(r / count, g / count, b / count);
     if (res.blocks.length === 1) {
-      // an ellipse fills ~78% of its box, a caption rectangle almost all of it
-      const { lines, pieces, density, ...text } = res.blocks[0];
-      found.push({ bubble: box, text, lines, round: res.fill < 0.9, bg, dark });
+      // elips kutusunun ~%78'ini doldurur, dikdörtgen kutu neredeyse hepsini
+      const t = res.blocks[0];
+      found.push({ bubble: box, text: rectOf(t), lines: t.lines, round: res.fill < 0.9, bg, dark });
     } else {
-      // two captions touching each other end up as one white area, split them by text
-      for (const { lines, pieces, density, ...text } of res.blocks) {
-        found.push({ bubble: clampTo(pad(text, 6), box), text, lines, round: false, bg, dark });
+      // birbirine değen iki anlatım kutusu tek beyaz alan çıkıyor, yazıya göre ayır
+      for (const t of res.blocks) {
+        found.push({ bubble: clampTo(pad(rectOf(t), 6), box), text: rectOf(t), lines: t.lines, round: false, bg, dark });
       }
     }
   }
@@ -109,13 +113,16 @@ export function detectRegions(img: Pixels, dark = false): Detected[] {
   return dropOuter(found);
 }
 
-// Looks at what the white area encloses. Text shows up as many small dark holes,
-// a drawing inside a white panel as one big hole.
+// Beyaz alanın içinde kalanlara bakıyor. Yazı bir sürü küçük koyu parça olarak
+// görünüyor, beyaz panelin içindeki bir çizim ise tek büyük parça.
 function findText(lum: Uint8Array, label: Int32Array, W: number, id: number, box: Rect, area: number) {
-  const { x: bx, y: by, w, h } = box;
+  const bx = box.x;
+  const by = box.y;
+  const w = box.w;
+  const h = box.h;
   const size = w * h;
 
-  // 0 = the white area, 1 = outside it, 2 = enclosed, 3 = enclosed and visited
+  // 0 = beyaz alanın kendisi, 1 = dışarısı, 2 = içeride kalan, 3 = içeride ve bakıldı
   const kind = new Uint8Array(size).fill(2);
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
@@ -123,6 +130,7 @@ function findText(lum: Uint8Array, label: Int32Array, W: number, id: number, box
     }
   }
 
+  // kutunun kenarından ulaşılabilen her şey dışarısı
   const stack = new Int32Array(size);
   let sp = 0;
   const outside = (i: number) => {
@@ -181,29 +189,36 @@ function findText(lum: Uint8Array, label: Int32Array, W: number, id: number, box
   if (ink / inside < 0.01 || ink / inside > 0.4) return null;
   if (largest > inside * 0.35) return null;
 
-  const blocks = mergePieces(pieces, GAP_X, GAP_Y).filter((b) => b.ink >= 8 && b.w > 3 && b.h > 3);
-  if (!blocks.length) return null;
+  let blocks = mergePieces(pieces, GAP_X, GAP_Y).filter((b) => b.ink >= 8 && b.w > 3 && b.h > 3);
 
-  return {
-    blocks: blocks.map(({ x, y, w, h, ink }) => {
-      const block = { x, y, w, h };
-      const mine = pieces.filter((p) => contains(block, p));
-      // letters on the same row become one line, rows have to overlap to join
-      const lines = mergePieces(mine, GAP_X * 2, -1);
-      return {
-        ...block,
-        lines: lines.map(({ x, y, w, h }) => ({ x, y, w, h })),
-        pieces: mine.length,
-        density: ink / (w * h),
-      };
-    }),
-    fill: inside / size,
-  };
+  const result = [];
+  for (const b of blocks) {
+    const block = { x: b.x, y: b.y, w: b.w, h: b.h };
+    const mine = pieces.filter((p) => contains(block, p));
+
+    // göz: beyazın içinde mürekkebin çoğunu tutan yuvarlak, içi dolu bir leke (göz bebeği).
+    // küçük yazıda harfler birleşip kelime kadar parça olabiliyor ama o parça yatay ve
+    // seyrek oluyor, sadece "büyük parça" demek yetmedi, şekline de bakıyoruz
+    let big = mine[0];
+    for (const p of mine) if (p.ink > big.ink) big = p;
+    const ratio = big.w / big.h;
+    const solid = big.ink / (big.w * big.h);
+    const blob = big.ink > b.ink * 0.5 && ratio > 0.6 && ratio < 1.6 && solid > 0.55;
+    if (mine.length < 2 || blob) continue;
+
+    // aynı satırdaki harfler bir satır oluyor, satırların üst üste binmesi lazım
+    const lines = mergePieces(mine, GAP_X * 2, -1).map(rectOf);
+    result.push({ ...block, lines, pieces: mine.length, density: b.ink / (b.w * b.h) });
+  }
+  if (!result.length) return null;
+
+  return { blocks: result, fill: inside / size };
 }
 
 function mergePieces(pieces: (Rect & { ink: number })[], gapX: number, gapY: number) {
   const list = pieces.slice();
   let merged = true;
+  // yakın olan iki parçayı birleştir, birleşecek bir şey kalmayana kadar devam
   while (merged) {
     merged = false;
     for (let i = 0; i < list.length && !merged; i++) {
@@ -216,8 +231,8 @@ function mergePieces(pieces: (Rect & { ink: number })[], gapX: number, gapY: num
           const x = Math.min(a.x, b.x);
           const y = Math.min(a.y, b.y);
           list[i] = {
-            x,
-            y,
+            x: x,
+            y: y,
             w: Math.max(a.x + a.w, b.x + b.w) - x,
             h: Math.max(a.y + a.h, b.y + b.h) - y,
             ink: a.ink + b.ink,
@@ -232,9 +247,13 @@ function mergePieces(pieces: (Rect & { ink: number })[], gapX: number, gapY: num
   return list;
 }
 
-// A white panel that holds a bubble also passes the test, keep only the bubble.
+// içinde balon olan beyaz panel de testi geçiyor, sadece balonu tut
 function dropOuter(found: Detected[]): Detected[] {
   return found.filter((a) => !found.some((b) => b !== a && contains(a.bubble, b.bubble)));
+}
+
+function rectOf(r: Rect): Rect {
+  return { x: r.x, y: r.y, w: r.w, h: r.h };
 }
 
 function contains(outer: Rect, inner: Rect): boolean {
@@ -258,8 +277,8 @@ function clampTo(r: Rect, outer: Rect): Rect {
   const x = Math.max(r.x, outer.x);
   const y = Math.max(r.y, outer.y);
   return {
-    x,
-    y,
+    x: x,
+    y: y,
     w: Math.min(r.x + r.w, outer.x + outer.w) - x,
     h: Math.min(r.y + r.h, outer.y + outer.h) - y,
   };

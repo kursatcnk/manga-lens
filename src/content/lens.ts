@@ -6,11 +6,11 @@ import { logoSvg } from "./logo";
 import { css } from "./styles";
 
 type State = "idle" | "scanning" | "active";
-// flip = the page may have changed, hide our UI for the shot and drop stale boxes
-// scroll = same page moved, keep everything and only add what's new
+// flip = sayfa değişmiş olabilir, çekimde arayüzü gizle ve eski kutuları at
+// scroll = aynı sayfa kaydı, hepsini tut sadece yenileri ekle
 type Mode = "flip" | "scroll";
 
-// keep the sweep on screen for a moment even when detection is instant
+// tespit anında bitse bile tarama efekti bir süre görünsün
 const MIN_SCAN_MS = 600;
 const NAV_KEYS = new Set(["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "PageUp", "PageDown", " "]);
 
@@ -43,6 +43,10 @@ export class Lens {
   private editing: Box | null = null;
 
   private readonly host = document.createElement("manga-lens");
+  // çeviriler ayrı bir katmanda, sayfanın içinde duruyor. Ekrana sabit katmanda
+  // her kaydırmadan sonra JS ile yerini düzeltiyorduk, yazılar bir kare geriden
+  // gelip titriyordu. Sayfanın içindeyken tarayıcı resimle beraber kaydırıyor.
+  private readonly pageHost = document.createElement("manga-lens-page");
   private readonly stage: HTMLElement;
   private readonly layer: HTMLElement;
   private readonly bar: HTMLElement;
@@ -66,7 +70,6 @@ export class Lens {
       <style>${css}</style>
       <div class="stage">
         <div class="dim"></div>
-        <div class="layer"></div>
         <div class="edge glow"><div class="ring"><div class="spin"></div></div></div>
         <div class="edge"><div class="ring"><div class="spin"></div></div></div>
         <div class="sweep"></div>
@@ -118,9 +121,13 @@ export class Lens {
         </div>
       </div>`;
 
+    this.pageHost.style.cssText = "all: initial !important; position: absolute !important; left: 0 !important; top: 0 !important; width: 0 !important; height: 0 !important; overflow: visible !important; z-index: 2147483646 !important; pointer-events: none !important;";
+    const pageRoot = this.pageHost.attachShadow({ mode: "closed" });
+    pageRoot.innerHTML = `<style>${css}</style><div class="layer"></div>`;
+    this.layer = pageRoot.querySelector(".layer") as HTMLElement;
+
     const $ = <T extends Element>(sel: string) => root.querySelector(sel) as T;
     this.stage = $(".stage");
-    this.layer = $(".layer");
     this.bar = $(".bar");
     this.status = $(".status");
     this.source = $(".source");
@@ -171,8 +178,8 @@ export class Lens {
     $<HTMLButtonElement>(".edit-save").addEventListener("click", () => this.saveEdit());
     $<HTMLButtonElement>(".edit-cancel").addEventListener("click", () => this.closeEditor());
 
-    // auto mode. Page flips (keys, clicks, wheel in paged readers) get a full rescan
-    // once things settle. Scrolling keeps up as it goes, for long webtoon strips.
+    // otomatik mod. sayfa çevirince (tuş, tık, sayfalı okuyucuda tekerlek) ortalık durulunca
+    // baştan tarıyor. kaydırırken de webtoon'lar için arada bir yeni balonlara bakıyor.
     const flipSoon = (ms: number) => {
       if (!this.autoOn()) return;
       clearTimeout(this.autoTimer);
@@ -182,7 +189,7 @@ export class Lens {
       this.schedule();
       this.showChip(null);
       if (!this.autoOn()) return;
-      // it scrolled, so whatever key or wheel started it wasn't a page flip
+      // kaydı, demek ki tuş ya da tekerlek sayfa çevirmedi
       clearTimeout(this.autoTimer);
       const now = performance.now();
       if (now - this.lastScrollScan > 1000) {
@@ -203,12 +210,11 @@ export class Lens {
       if (!e.composedPath().includes(this.host)) flipSoon(800);
     }, true);
     addEventListener("mousemove", (e) => this.onMouse(e.clientX, e.clientY), { passive: true });
-    // fullscreen readers only paint what is inside the fullscreen element
     document.addEventListener("fullscreenchange", () => this.mount());
 
     this.mount();
 
-    // the floating logo only shows up on pages that look like a reader
+    // logo sadece okuyucuya benzeyen sayfalarda çıksın
     send<Prefs>({ type: "prefs" })
       .then((p) => {
         this.prefs = p;
@@ -235,12 +241,31 @@ export class Lens {
     return this.state === "active" && this.prefs.auto;
   }
 
+  // tam ekran okuyucular sadece tam ekran olan elemanın içini gösteriyor
   private mount() {
     const parent = document.fullscreenElement ?? document.documentElement;
     if (this.host.parentNode !== parent) parent.append(this.host);
+    if (this.pageHost.parentNode !== parent) parent.append(this.pageHost);
+    // tam ekranda sayfa kaymıyor, katman ekrana sabit olsun
+    this.pageHost.style.setProperty("position", document.fullscreenElement ? "fixed" : "absolute", "important");
+    this.schedule();
   }
 
-  // returns true once the logo is showing for good
+  // katmanın sol üst köşesi ekranda nerede (sayfa kaydıkça değişiyor)
+  private offset() {
+    const r = this.pageHost.getBoundingClientRect();
+    return { x: r.left, y: r.top };
+  }
+
+  // ekran görüntüsünde ve elementFromPoint'te bizim katmanlar görünmemeli
+  private hideUi(hide: boolean) {
+    for (const h of [this.host, this.pageHost]) {
+      if (hide) h.style.setProperty("visibility", "hidden", "important");
+      else h.style.removeProperty("visibility");
+    }
+  }
+
+  // logo kalıcı olarak göründüyse true döner
   private updateLogo() {
     const p = this.prefs;
     let show = p.logo === "always" || (p.logo === "auto" && looksLikeComic());
@@ -255,15 +280,15 @@ export class Lens {
     this.updateLogo();
   }
 
-  // the screenshot must not contain our own UI
+  // ekran görüntüsünde bizim arayüz olmamalı
   private async shoot() {
     const scrolled = { x: scrollX, y: scrollY };
-    this.host.style.setProperty("visibility", "hidden", "important");
+    this.hideUi(true);
     try {
       await frames(2);
       await send({ type: "capture" });
     } finally {
-      this.host.style.removeProperty("visibility");
+      this.hideUi(false);
     }
     return scrolled;
   }
@@ -272,7 +297,10 @@ export class Lens {
     this.state = "scanning";
     const run = ++this.run;
     this.error = "";
-    void loadFont();
+    // font gelince o ana kadar dizilen yazıları baştan diz, yoksa ölçüler tutmuyor
+    loadFont().then(() => {
+      for (const b of this.boxes) b.relayout();
+    });
 
     try {
       this.prefs = await send<Prefs>({ type: "prefs" });
@@ -287,7 +315,7 @@ export class Lens {
       const result = await send<ScanResult>({ type: "detect" });
       if (run !== this.run) return;
 
-      // start translating right away, the sweep just keeps running on top for a bit
+      // çeviriye hemen başla, tarama efekti bir süre daha üstte dönsün
       this.state = "active";
       this.bar.classList.add("show");
       this.timer = window.setInterval(() => this.schedule(), 500);
@@ -302,11 +330,11 @@ export class Lens {
     }
   }
 
-  // quiet scan for auto mode and language changes, no big animation
+  // otomatik mod ve dil değişince sessiz tarama, büyük animasyon yok
   private async rescan(mode: Mode) {
     if (this.state !== "active") return;
     if (this.busy) {
-      // a flip asked while busy wins over a scroll
+      // meşgulken sayfa çevirme istendiyse kaydırmaya göre öncelikli
       this.pending = mode === "flip" || this.pending === "flip" ? "flip" : "scroll";
       return;
     }
@@ -316,8 +344,8 @@ export class Lens {
     try {
       let scrolled = { x: scrollX, y: scrollY };
       if (mode === "flip") scrolled = await this.shoot();
-      // while scrolling the overlay stays visible, hiding it every second would flicker.
-      // our translated bubbles are still bubbles in the shot, so they match up fine
+      // kaydırırken arayüzü gizlemiyoruz, her saniye gizleyince yanıp sönüyordu.
+      // çevrilmiş balonlar çekimde yine balon olarak görünüyor, eşleşmede sorun olmuyor
       else await send({ type: "capture" });
 
       const result = await send<ScanResult>({ type: "detect" });
@@ -333,28 +361,28 @@ export class Lens {
       this.stage.classList.remove("busy");
       const next = this.pending;
       this.pending = null;
-      // captureVisibleTab allows two shots a second, don't go back to back
+      // captureVisibleTab saniyede iki çekime izin veriyor, arka arkaya yapma
       if (next && run === this.run) setTimeout(() => void this.rescan(next), 500);
     }
   }
 
   private toCss(result: ScanResult, scrolled: { x: number; y: number }) {
-    // screenshot pixels -> CSS pixels, also covers devicePixelRatio and page zoom
+    // ekran görüntüsü pikseli -> CSS pikseli, devicePixelRatio ve zoom da buna dahil
     const k = innerWidth / result.width;
     const dx = scrolled.x - scrollX;
     const dy = scrolled.y - scrollY;
     return (r: Rect) => ({ x: r.x * k + dx, y: r.y * k + dy, w: r.w * k, h: r.h * k });
   }
 
-  // Adds boxes for new text areas and keeps the ones already there. On a page flip
-  // it also drops on-screen boxes whose text is gone.
+  // Yeni yazı alanları için kutu ekliyor, zaten olanları bırakıyor. Sayfa değiştiyse
+  // ekranda olup artık bulunamayan kutuları da kaldırıyor.
   private merge(result: ScanResult, scrolled: { x: number; y: number }, dropGone: boolean) {
     const toCss = this.toCss(result, scrolled);
     const keep = new Set<Box>();
     const fresh: Box[] = [];
 
-    // anchors hit-test the page, so our layer has to be out of the way
-    this.host.style.setProperty("visibility", "hidden", "important");
+    // anchor'lar sayfada elementFromPoint yapıyor, bizim katmanlar araya girmesin
+    this.hideUi(true);
     for (const r of result.regions) {
       const bubble = toCss(r.bubble);
       const same = this.boxes.find((b) => b.rect && overlap(b.rect, bubble) > 0.6);
@@ -369,10 +397,10 @@ export class Lens {
       );
       fresh.push(box);
     }
-    this.host.style.removeProperty("visibility");
+    this.hideUi(false);
 
     if (dropGone) {
-      // only boxes fully in view can be judged, a half visible bubble isn't detected anyway
+      // sadece tamamen ekranda olan kutulara karar verebiliriz, yarısı görünen balon zaten bulunmuyor
       const gone = this.boxes.filter((b) => !keep.has(b) && b.rect && inView(b.rect));
       this.remove(gone);
       this.boxes = this.boxes.filter((b) => !gone.includes(b));
@@ -380,7 +408,8 @@ export class Lens {
     this.boxes = this.boxes.concat(fresh);
 
     this.layer.append(...fresh.map((b) => b.el));
-    fresh.forEach((b) => b.place());
+    const off = this.offset();
+    for (const b of fresh) b.place(off);
     return fresh;
   }
 
@@ -418,7 +447,7 @@ export class Lens {
     });
     port.onDisconnect.addListener(() => {
       drop();
-      // the service worker went away mid-stream
+      // service worker çeviri ortasında kapandı
       if (run !== this.run) return;
       if (list.some((b) => !b.done && !b.failed)) {
         list.forEach((b) => b.done || b.fail());
@@ -437,7 +466,7 @@ export class Lens {
     this.progress();
   }
 
-  // language or glossary changed: start over from a fresh screenshot
+  // dil ya da sözlük değişti: yeni bir ekran görüntüsüyle baştan başla
   private retranslate(fresh = false) {
     if (this.state !== "active") return;
     this.run++;
@@ -452,7 +481,7 @@ export class Lens {
     void this.rescan("flip");
   }
 
-  // one bubble came out wrong: find it in a new shot and ask again, skipping the cache
+  // bir balon yanlış çıktı: yeni çekimde onu bul ve önbelleği atlayıp tekrar sor
   private async retry(box: Box) {
     if (this.busy || !box.rect) return;
     this.busy = true;
@@ -483,7 +512,7 @@ export class Lens {
 
   private onMouse(x: number, y: number) {
     if (this.state !== "active" || this.editing || this.panel.classList.contains("show")) return;
-    // a bit of room above the bubble so the pointer can reach the chip
+    // balonun üstünde biraz pay, fare düğmelere ulaşabilsin
     const box = this.boxes.find((b) => {
       const r = b.rect;
       if (!r || !(b.done || b.failed)) return false;
@@ -519,7 +548,7 @@ export class Lens {
     this.closeEditor();
     if (!box || !text) return;
     box.fill(text, this.target.value);
-    // next time this bubble shows up, use the fixed text
+    // bu balon bir daha gelince düzeltilmiş hali kullanılsın
     if (box.key) void send({ type: "remember", key: box.key, text });
     this.progress();
   }
@@ -559,7 +588,7 @@ export class Lens {
 
   private showError(code: ErrorCode, detail = "") {
     console.warn("[manga-lens]", code, detail);
-    // the generic message alone tells nobody what went wrong
+    // sadece genel mesaj neyin bozulduğunu söylemiyor
     this.error = code === "other" && detail ? `${ERRORS[code]}: ${detail}` : ERRORS[code];
     this.setStatus(this.error, true);
     this.status.title = detail;
@@ -575,7 +604,8 @@ export class Lens {
     if (this.state !== "active" || this.frame) return;
     this.frame = requestAnimationFrame(() => {
       this.frame = 0;
-      for (const box of this.boxes) box.place();
+      const off = this.offset();
+      for (const box of this.boxes) box.place(off);
     });
   }
 
@@ -622,7 +652,7 @@ export class Lens {
   }
 }
 
-// a big image or canvas on the page, most readers have one
+// sayfada büyük bir resim ya da canvas var mı, okuyucuların çoğunda var
 function looksLikeComic() {
   const els = document.querySelectorAll("img, canvas, [style*='background-image']");
   for (let i = 0; i < els.length && i < 500; i++) {
@@ -632,7 +662,7 @@ function looksLikeComic() {
   return false;
 }
 
-// rough number of characters that fit at a still readable size
+// okunur bir boyutta kabaca kaç karakter sığar
 function charLimit(r: Rect, round: boolean) {
   const area = r.w * r.h * (round ? 0.6 : 0.8);
   return Math.max(6, Math.min(400, Math.round(area / (13 * 7.5 * 1.15))));
@@ -657,7 +687,7 @@ async function send<T = unknown>(msg: Request): Promise<T> {
   return reply.data;
 }
 
-// rAF stalls when the tab isn't painting, so don't wait on it forever
+// sekme çizilmiyorsa rAF takılıyor, sonsuza kadar bekleme
 function frames(n: number) {
   return new Promise<void>((resolve) => {
     const step = () => (--n <= 0 ? resolve() : requestAnimationFrame(step));

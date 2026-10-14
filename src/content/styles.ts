@@ -4,13 +4,13 @@ export const css = `
 
 .stage { position: fixed; inset: 0; pointer-events: none; }
 
-/* dim + glowing edge + sweep while scanning */
+/* tararken karartma + parlayan kenar + tarama bandı */
 .dim {
   position: fixed; inset: 0;
   background: rgba(8, 12, 28, .16);
   opacity: 0; transition: opacity .35s ease;
 }
-/* only while scanning, a dimmed page makes the bubbles look pasted on */
+/* sadece tararken, sayfa karanlık kalınca balonlar yapıştırılmış gibi duruyordu */
 .scanning .dim { opacity: 1; }
 
 .edge { position: fixed; inset: 0; opacity: 0; transition: opacity .5s ease; }
@@ -18,8 +18,8 @@ export const css = `
 .scanning .edge { opacity: 1; }
 .scanning .edge.glow { opacity: .85; }
 
-/* @property doesn't work in a shadow root, so a huge gradient square spins
-   behind a mask that only lets the screen border through */
+/* shadow root içinde @property çalışmıyor, o yüzden kocaman bir renkli kare dönüyor
+   ve önündeki maske sadece ekranın kenarını gösteriyor */
 .ring {
   position: absolute; inset: 0; overflow: hidden;
   padding: 3px;
@@ -46,8 +46,8 @@ export const css = `
 }
 .scanning .sweep { opacity: 1; animation: sweep 1.5s cubic-bezier(.45, 0, .25, 1) infinite; }
 
-/* text areas */
-.layer { position: fixed; inset: 0; }
+/* katman sayfanın sol üstünde, kutular translate ile yerleşiyor */
+.layer { position: absolute; left: 0; top: 0; width: 0; height: 0; }
 .box { position: absolute; left: 0; top: 0; transition: opacity .25s ease; }
 .box.leaving { opacity: 0; }
 
@@ -73,7 +73,7 @@ export const css = `
 .done .wipe, .done .cover { opacity: 1; }
 .layer.original .wipe, .layer.original .cover, .peek .wipe, .peek .cover { opacity: 0; }
 
-/* top bar */
+/* üst çubuk */
 .bar {
   position: fixed; top: 12px; left: 50%;
   translate: -50% calc(-100% - 20px);
@@ -114,7 +114,7 @@ export const css = `
   .bar .status { min-width: 0; }
 }
 
-/* glossary panel under the bar, edit box and the small chip over a bubble */
+/* çubuğun altındaki sözlük paneli, düzeltme kutusu ve balonun üstündeki küçük düğmeler */
 .panel, .editor, .chip {
   position: fixed;
   pointer-events: auto;
@@ -153,7 +153,7 @@ export const css = `
 .chip { gap: 4px; padding: 4px; border-radius: 10px; }
 .chip button { width: 28px; height: 26px; padding: 0; font-size: 14px; }
 
-/* floating logo tab on the right edge */
+/* sağ kenardaki logo */
 .logo-wrap {
   position: fixed; right: 0; top: 50%;
   translate: 40% -50%;

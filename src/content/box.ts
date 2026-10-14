@@ -5,7 +5,7 @@ import { fitText } from "./layout";
 
 export interface BoxInput {
   id: number;
-  bubble: Rect; // viewport CSS pixels
+  bubble: Rect; // ekrandaki CSS pikseli
   text: Rect;
   lines: Rect[];
   round: boolean;
@@ -13,31 +13,33 @@ export interface BoxInput {
   dark: boolean;
 }
 
-// One text area: a blue highlight while waiting, then the original lines painted over
-// in the bubble's own color and the translation written on the real bubble.
+// Tek bir yazı alanı: beklerken mavi vurgu, sonra orijinal satırlar balonun kendi
+// rengiyle kapatılıyor ve çeviri gerçek balonun üstüne yazılıyor.
 export class Box {
-  readonly id: number;
-  readonly el = document.createElement("div");
-  readonly round: boolean;
-  private readonly hl = document.createElement("div");
-  private readonly cover = document.createElement("div");
-  private readonly anchor: Anchor;
-  private text = "";
-  private lang = "tr";
-  private laidW = 0;
+  id: number;
+  el = document.createElement("div");
+  round: boolean;
+  hl = document.createElement("div");
+  cover = document.createElement("div");
+  anchor: Anchor;
+  text = "";
+  lang = "tr";
+  laidW = 0;
   rect: Rect | null = null;
-  // the translation as it came in, before uppercasing (for the edit box)
+  // gelen çeviri, büyük harfe çevrilmeden önceki hali (düzeltme kutusu için)
   raw = "";
-  // cache key from the background, so a hand fix can be saved
+  // arka plandaki önbellek anahtarı, elle düzeltme buna kaydediliyor
   key = "";
+  // yazının yerleşeceği alan, balonun içinde yüzde olarak
+  area = { x: 0, y: 0, w: 1, h: 1 };
 
-  // job: what gets sent for translation, in screenshot pixels
+  // job: çeviriye giden bilgiler, ekran görüntüsü pikseliyle
   constructor(input: BoxInput, index: number, public job: TranslateJob["regions"][number]) {
     this.id = input.id;
-    this.round = input.round;
     this.anchor = new Anchor(input.bubble);
 
     const b = input.bubble;
+    const t = input.text;
     const pct = (r: Rect, pad: number) => {
       const x = Math.max(b.x, r.x - pad);
       const y = Math.max(b.y, r.y - pad);
@@ -46,14 +48,35 @@ export class Box {
       return `left:${((x - b.x) / b.w) * 100}%;top:${((y - b.y) / b.h) * 100}%;width:${(w / b.w) * 100}%;height:${(h / b.h) * 100}%`;
     };
 
+    // Beyaz alan bazen balonun dışına taşıyor (çizgisi açık balon, arkadaki beyaz
+    // panel...). O zaman yazıyı koca alanın ortasına koyarsak orijinalin olduğu
+    // yerden kayıyor, o yüzden yazıyı orijinal metnin etrafında tutuyoruz.
+    const tooBig = b.w > t.w * 2.4 || b.h > t.h * 2.4;
+    if (tooBig) {
+      const padX = t.w * 0.35;
+      const padY = t.h * 0.25;
+      const x = Math.max(b.x, t.x - padX);
+      const y = Math.max(b.y, t.y - padY);
+      const w = Math.min(b.x + b.w, t.x + t.w + padX) - x;
+      const h = Math.min(b.y + b.h, t.y + t.h + padY) - y;
+      this.area = { x: (x - b.x) / b.w, y: (y - b.y) / b.h, w: w / b.w, h: h / b.h };
+      this.round = false;
+    } else {
+      // balonun çizgisine değmesin diye biraz içeriden
+      const inset = input.round ? 0.08 : 0.05;
+      this.area = { x: inset, y: inset, w: 1 - inset * 2, h: 1 - inset * 2 };
+      this.round = input.round;
+    }
+
     this.el.className = "box";
     this.el.style.setProperty("--d", `${index * 45}ms`);
     this.hl.className = "hl";
-    this.hl.style.cssText = pct(input.text, 5);
+    this.hl.style.cssText = pct(t, 5);
     this.el.append(this.hl);
 
-    // one soft patch per original line; a whole-bubble cover never lines up with the outline
-    const lines = input.lines.length ? input.lines : [input.text];
+    // her orijinal satıra yumuşak kenarlı bir yama. bütün balonu kapatan oval
+    // hiçbir zaman balonun çizgisine tam oturmuyordu
+    const lines = input.lines.length ? input.lines : [t];
     for (const line of lines) {
       const wipe = document.createElement("div");
       wipe.className = "wipe";
@@ -63,20 +86,26 @@ export class Box {
 
     this.cover.className = "cover";
     this.cover.style.fontFamily = FONT_STACK;
-    // black bubbles have white letters
+    // siyah balonda yazı beyaz
     this.cover.style.color = input.dark ? "#fff" : "#111";
+    const a = this.area;
+    this.cover.style.left = a.x * 100 + "%";
+    this.cover.style.top = a.y * 100 + "%";
+    this.cover.style.width = a.w * 100 + "%";
+    this.cover.style.height = a.h * 100 + "%";
     this.el.append(this.cover);
   }
 
-  place() {
+  // offset: katmanın sayfadaki yeri, ekran koordinatını katman koordinatına çeviriyor
+  place(offset: { x: number; y: number }) {
     const r = this.anchor.place();
     this.rect = r;
     this.el.hidden = !r;
     if (!r) return;
-    this.el.style.translate = `${r.x}px ${r.y}px`;
+    this.el.style.translate = `${r.x - offset.x}px ${r.y - offset.y}px`;
     this.el.style.width = `${r.w}px`;
     this.el.style.height = `${r.h}px`;
-    // zoomed or resized: lay the text out again for the new size
+    // yakınlaştırıldı ya da resim büyüdü: yazıyı yeni boyuta göre tekrar diz
     if (this.text && Math.abs(r.w - this.laidW) > 2) this.layout();
   }
 
@@ -109,30 +138,33 @@ export class Box {
 
   fill(text: string, lang: string) {
     if (!text.trim()) {
-      // nothing to translate in this box, just drop the highlight
+      // bu kutuda çevrilecek bir şey yokmuş, sadece maviyi kaldır
       this.fail();
       return;
     }
     this.raw = text;
     this.lang = lang;
-    this.text = lang === "tr" ? text.toLocaleUpperCase("tr") : text.toUpperCase();
+    if (lang === "tr") this.text = text.toLocaleUpperCase("tr");
+    else this.text = text.toUpperCase();
     this.layout();
     this.el.classList.remove("failed", "peek");
     this.el.classList.add("done");
   }
 
-  private layout() {
+  // font sonradan yüklenince ölçüler değişiyor, baştan dizmek lazım
+  relayout() {
+    if (this.text) this.layout();
+  }
+
+  layout() {
     const r = this.rect;
     if (!r) return;
     this.laidW = r.w;
 
-    // stay off the bubble's outline
-    const inset = this.round ? 0.08 : 0.05;
-    const w = r.w * (1 - inset * 2);
-    const h = r.h * (1 - inset * 2);
-    this.cover.style.inset = `${inset * 100}%`;
-
+    const w = r.w * this.area.w;
+    const h = r.h * this.area.h;
     const fit = fitText(this.text, w, h, this.round, measure, this.lang === "tr");
+
     const lines = document.createElement("div");
     lines.className = "lines";
     if (fit) {
@@ -144,7 +176,7 @@ export class Box {
         lines.append(div);
       }
     } else {
-      // way too long for the bubble, show it small rather than not at all
+      // balona hiç sığmıyor, hiç göstermemektense küçük göster
       lines.style.fontSize = "7px";
       lines.style.lineHeight = "8px";
       lines.textContent = this.text;
