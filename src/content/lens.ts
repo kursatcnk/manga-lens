@@ -7,7 +7,7 @@ import { css } from "./styles";
 type State = "idle" | "scanning" | "active";
 
 // keep the sweep on screen for a moment even when detection is instant
-const MIN_SCAN_MS = 900;
+const MIN_SCAN_MS = 600;
 const NAV_KEYS = new Set(["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "PageUp", "PageDown", " "]);
 
 const ERRORS: Record<ErrorCode, string> = {
@@ -169,17 +169,18 @@ export class Lens {
       const started = performance.now();
 
       const result = await send<ScanResult>({ type: "detect" });
-      await delay(MIN_SCAN_MS - (performance.now() - started));
       if (run !== this.run) return;
 
-      this.stage.classList.remove("scanning");
+      // start translating right away, the sweep just keeps running on top for a bit
       this.state = "active";
       this.bar.classList.add("show");
       this.timer = window.setInterval(() => this.schedule(), 500);
-
       const added = this.merge(result, scrolled);
       if (!this.boxes.length) this.setStatus("Bu ekranda yazı bulunamadı");
       else this.translate(added);
+
+      await delay(MIN_SCAN_MS - (performance.now() - started));
+      if (run === this.run) this.stage.classList.remove("scanning");
     } catch (err) {
       if (run === this.run) this.fail(err);
     }

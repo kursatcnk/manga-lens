@@ -24,17 +24,24 @@ async function claude(s: Settings, image: string, prompt: string, onText: OnText
   // the key belongs to the user and never leaves their browser except to the API
   const client = new Anthropic({ apiKey: s.claudeKey, dangerouslyAllowBrowser: true });
 
-  // haiku has no server-side fallback, sending the param would fail
-  const fallback = !s.claudeModel.includes("haiku");
+  // Translating bubbles needs no thinking, and thinking is most of the wait.
+  // Haiku can turn it off, Sonnet does it with between_tools, Opus can't, so it gets
+  // low effort plus the server-side fallback (the other two can't use that here).
+  const model = s.claudeModel;
+  // loosely typed, the installed SDK types don't know between_tools yet
+  const extra: Record<string, unknown> = model.includes("haiku")
+    ? { thinking: { type: "disabled" } }
+    : model.includes("sonnet")
+      ? { thinking: { type: "between_tools" } }
+      : { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" };
 
   try {
     const stream = client.beta.messages.stream(
       {
-        model: s.claudeModel,
-        max_tokens: 8000,
-        // translating a page doesn't need deep thinking, and low keeps it fast
+        model,
+        max_tokens: 4000,
         output_config: { effort: "low" },
-        ...(fallback ? { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" } : {}),
+        ...extra,
         messages: [
           {
             role: "user",
@@ -72,6 +79,8 @@ async function gemini(s: Settings, image: string, prompt: string, onText: OnText
           parts: [{ inline_data: { mime_type: "image/jpeg", data: image } }, { text: prompt }],
         },
       ],
+      // default is "high", which is slow and pointless for translating bubbles
+      generationConfig: { thinkingConfig: { thinkingLevel: "low" } },
     }),
   });
 

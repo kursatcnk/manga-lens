@@ -1,8 +1,8 @@
 import type { Rect, TranslateJob } from "../shared/messages";
 import { LANGS } from "../shared/settings";
 
-// Claude downsizes anything bigger anyway
-const MAX_SIDE = 1568;
+// smaller image = fewer input tokens = faster answer, bubble text is still readable
+const MAX_SIDE = 1280;
 
 // Crops the part of the screen that has text on it and draws numbered boxes on it,
 // so the model can answer per box.
@@ -66,7 +66,7 @@ Rules:
 - If a box has no real text in it, return an empty "text".
 
 Answer with one JSON object per line and nothing else, in box order:
-{"id": 1, "src": "original text", "text": "translation"}
+{"id": 1, "text": "translation"}
 
 Boxes:
 ${boxes}`;
