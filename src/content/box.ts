@@ -10,6 +10,7 @@ export interface BoxInput {
   lines: Rect[];
   round: boolean;
   bg: string;
+  dark: boolean;
 }
 
 // One text area: a blue highlight while waiting, then the original lines painted over
@@ -25,9 +26,13 @@ export class Box {
   private lang = "tr";
   private laidW = 0;
   rect: Rect | null = null;
+  // the translation as it came in, before uppercasing (for the edit box)
+  raw = "";
+  // cache key from the background, so a hand fix can be saved
+  key = "";
 
-  // what gets sent for translation, in screenshot pixels
-  constructor(input: BoxInput, index: number, readonly job: TranslateJob["regions"][number]) {
+  // job: what gets sent for translation, in screenshot pixels
+  constructor(input: BoxInput, index: number, public job: TranslateJob["regions"][number]) {
     this.id = input.id;
     this.round = input.round;
     this.anchor = new Anchor(input.bubble);
@@ -58,6 +63,8 @@ export class Box {
 
     this.cover.className = "cover";
     this.cover.style.fontFamily = FONT_STACK;
+    // black bubbles have white letters
+    this.cover.style.color = input.dark ? "#fff" : "#111";
     this.el.append(this.cover);
   }
 
@@ -81,9 +88,18 @@ export class Box {
     return this.el.classList.contains("failed");
   }
 
+  get peeking() {
+    return this.el.classList.contains("peek");
+  }
+
+  peek() {
+    this.el.classList.toggle("peek");
+  }
+
   reset() {
     this.text = "";
-    this.el.classList.remove("done", "failed");
+    this.raw = "";
+    this.el.classList.remove("done", "failed", "peek");
     this.cover.replaceChildren();
   }
 
@@ -97,9 +113,11 @@ export class Box {
       this.fail();
       return;
     }
+    this.raw = text;
     this.lang = lang;
     this.text = lang === "tr" ? text.toLocaleUpperCase("tr") : text.toUpperCase();
     this.layout();
+    this.el.classList.remove("failed", "peek");
     this.el.classList.add("done");
   }
 

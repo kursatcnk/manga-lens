@@ -71,7 +71,7 @@ export const css = `
 }
 .lines > div { white-space: pre; }
 .done .wipe, .done .cover { opacity: 1; }
-.layer.original .wipe, .layer.original .cover { opacity: 0; }
+.layer.original .wipe, .layer.original .cover, .peek .wipe, .peek .cover { opacity: 0; }
 
 /* top bar */
 .bar {
@@ -114,20 +114,72 @@ export const css = `
   .bar .status { min-width: 0; }
 }
 
+/* glossary panel under the bar, edit box and the small chip over a bubble */
+.panel, .editor, .chip {
+  position: fixed;
+  pointer-events: auto;
+  background: rgba(20, 23, 34, .96);
+  color: #e9ecf5;
+  font: 13px/1.4 "Segoe UI", system-ui, sans-serif;
+  border-radius: 12px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .35), 0 0 0 1px rgba(255, 255, 255, .07);
+  display: none;
+}
+.panel.show, .editor.show { display: block; }
+.chip.show { display: flex; }
+
+.panel { top: 64px; left: 50%; translate: -50% 0; width: min(420px, calc(100vw - 24px)); padding: 12px; }
+.panel-head { font-weight: 600; margin-bottom: 8px; }
+.panel-head .series { font-weight: normal; opacity: .6; margin-left: 6px; }
+.panel textarea, .editor textarea {
+  width: 100%; min-height: 120px; resize: vertical;
+  padding: 8px; border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, .15);
+  background: rgba(255, 255, 255, .06); color: inherit;
+  font: 13px/1.4 ui-monospace, Consolas, monospace;
+}
+.editor { width: 280px; padding: 10px; }
+.editor textarea { min-height: 70px; font-family: inherit; }
+.hint { margin: 6px 0 0; opacity: .65; font-size: 12px; }
+.panel-actions { display: flex; gap: 8px; margin-top: 8px; }
+.panel button, .editor button, .chip button {
+  font: inherit; color: inherit; cursor: pointer;
+  background: rgba(255, 255, 255, .08);
+  border: 1px solid rgba(255, 255, 255, .12);
+  border-radius: 8px; padding: 5px 10px;
+}
+.panel button:hover, .editor button:hover, .chip button:hover { background: rgba(255, 255, 255, .16); }
+
+.chip { gap: 4px; padding: 4px; border-radius: 10px; }
+.chip button { width: 28px; height: 26px; padding: 0; font-size: 14px; }
+
 /* floating logo tab on the right edge */
-.logo {
+.logo-wrap {
   position: fixed; right: 0; top: 50%;
   translate: 40% -50%;
+  pointer-events: auto;
+  transition: translate .25s ease;
+}
+.logo-wrap[hidden] { display: none; }
+.logo-wrap:hover, .on .logo-wrap { translate: -10px -50%; }
+.logo {
   width: 46px; height: 46px;
   display: grid; place-items: center;
   border: 0; border-radius: 50%;
   background: #141826;
   box-shadow: 0 6px 20px rgba(0, 0, 0, .3), 0 0 0 1px rgba(255, 255, 255, .08);
   cursor: pointer;
-  pointer-events: auto;
-  transition: translate .25s ease;
 }
-.logo:hover, .on .logo { translate: -10px -50%; }
+.logo-hide {
+  position: absolute; left: -6px; top: -6px;
+  width: 18px; height: 18px; padding: 0;
+  border: 0; border-radius: 50%;
+  background: #2a2f3d; color: #cfd4e2;
+  font: 12px/18px system-ui, sans-serif;
+  cursor: pointer;
+  opacity: 0; transition: opacity .2s ease;
+}
+.logo-wrap:hover .logo-hide { opacity: 1; }
 .scanning .logo svg, .busy .logo svg { animation: spin 1.2s linear infinite; }
 
 @keyframes spin { to { transform: rotate(1turn); } }

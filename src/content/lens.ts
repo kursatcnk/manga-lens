@@ -1,10 +1,14 @@
-import type { ErrorCode, PortMessage, Prefs, Rect, Reply, Request, ScanResult, TranslateJob } from "../shared/messages";
+import { seriesKey } from "../shared/glossary";
+import type { ErrorCode, Glossary, PortMessage, Prefs, Rect, Reply, Request, ScanResult, TranslateJob } from "../shared/messages";
 import { Box } from "./box";
 import { loadFont } from "./font";
 import { logoSvg } from "./logo";
 import { css } from "./styles";
 
 type State = "idle" | "scanning" | "active";
+// flip = the page may have changed, hide our UI for the shot and drop stale boxes
+// scroll = same page moved, keep everything and only add what's new
+type Mode = "flip" | "scroll";
 
 // keep the sweep on screen for a moment even when detection is instant
 const MIN_SCAN_MS = 600;
@@ -23,13 +27,20 @@ export class Lens {
   private run = 0;
   private seq = 0;
   private busy = false;
+  private pending: Mode | null = null;
+  private freshNext = false;
   private boxes: Box[] = [];
   private ports: chrome.runtime.Port[] = [];
-  private prefs: Prefs = { target: "tr", auto: false };
+  private prefs: Prefs = { target: "tr", auto: false, logo: "auto", hiddenSites: [] };
   private error = "";
   private frame = 0;
   private timer = 0;
   private autoTimer = 0;
+  private scrollTimer = 0;
+  private lastScrollScan = 0;
+  private logoCheck = 0;
+  private hover: Box | null = null;
+  private editing: Box | null = null;
 
   private readonly host = document.createElement("manga-lens");
   private readonly stage: HTMLElement;
@@ -41,6 +52,12 @@ export class Lens {
   private readonly auto: HTMLButtonElement;
   private readonly original: HTMLButtonElement;
   private readonly settings: HTMLButtonElement;
+  private readonly logo: HTMLElement;
+  private readonly panel: HTMLElement;
+  private readonly terms: HTMLTextAreaElement;
+  private readonly chip: HTMLElement;
+  private readonly editor: HTMLElement;
+  private readonly editText: HTMLTextAreaElement;
 
   constructor() {
     this.host.style.cssText = "all: initial !important; position: fixed !important; inset: 0 !important; z-index: 2147483647 !important; pointer-events: none !important;";
@@ -68,12 +85,37 @@ export class Lens {
             <option value="en">İngilizce</option>
           </select>
           <span class="status" aria-live="polite"></span>
-          <button class="auto" aria-pressed="false" title="Sayfa değişince kendiliğinden çevir">Otomatik</button>
+          <button class="auto" aria-pressed="false" title="Kaydırınca ve sayfa değişince kendiliğinden çevir">Otomatik</button>
           <button class="original" aria-pressed="false">Orijinal</button>
+          <button class="dict" title="Bu serinin isim sözlüğü">Sözlük</button>
           <button class="settings icon" title="Ayarlar" aria-label="Ayarlar">⚙</button>
           <button class="close icon" title="Kapat (Esc)" aria-label="Kapat">✕</button>
         </div>
-        <button class="logo" title="Manga Lens (Alt+Shift+T)">${logoSvg}</button>
+        <div class="panel">
+          <div class="panel-head">Sözlük <span class="series"></span></div>
+          <textarea class="terms" spellcheck="false" placeholder="Akira-san = Akira Abi&#10;Sensei = Hocam"></textarea>
+          <p class="hint">Her satıra bir tane: orijinal = çeviri. Model yeni isimleri kendisi ekler, sen düzeltebilirsin.</p>
+          <div class="panel-actions">
+            <button class="save-terms">Kaydet</button>
+            <button class="save-terms again">Kaydet ve yeniden çevir</button>
+          </div>
+        </div>
+        <div class="chip">
+          <button data-act="retry" title="Bu balonu yeniden çevir">↻</button>
+          <button data-act="edit" title="Çeviriyi düzelt">✎</button>
+          <button data-act="peek" title="Orijinali göster">◐</button>
+        </div>
+        <div class="editor">
+          <textarea class="edit-text" spellcheck="false"></textarea>
+          <div class="panel-actions">
+            <button class="edit-save">Kaydet</button>
+            <button class="edit-cancel">Vazgeç</button>
+          </div>
+        </div>
+        <div class="logo-wrap" hidden>
+          <button class="logo" title="Manga Lens (Alt+Shift+T)">${logoSvg}</button>
+          <button class="logo-hide" title="Bu sitede gösterme (ayarlardan geri açılır)">×</button>
+        </div>
       </div>`;
 
     const $ = <T extends Element>(sel: string) => root.querySelector(sel) as T;
@@ -86,9 +128,17 @@ export class Lens {
     this.auto = $(".auto");
     this.original = $(".original");
     this.settings = $(".settings");
+    this.logo = $(".logo-wrap");
+    this.panel = $(".panel");
+    this.terms = $(".terms");
+    this.chip = $(".chip");
+    this.editor = $(".editor");
+    this.editText = $(".edit-text");
 
     $<HTMLButtonElement>(".logo").addEventListener("click", () => this.toggle());
+    $<HTMLButtonElement>(".logo-hide").addEventListener("click", () => this.hideOnThisSite());
     $<HTMLButtonElement>(".close").addEventListener("click", () => this.close());
+    $<HTMLButtonElement>(".dict").addEventListener("click", () => void this.openGlossary());
     this.settings.addEventListener("click", () => void send({ type: "options" }));
     this.source.addEventListener("change", () => this.retranslate());
     this.target.addEventListener("change", () => {
@@ -100,33 +150,80 @@ export class Lens {
       this.prefs.auto = !this.prefs.auto;
       this.auto.setAttribute("aria-pressed", String(this.prefs.auto));
       void send({ type: "save-prefs", prefs: { auto: this.prefs.auto } });
-      if (this.prefs.auto) void this.rescan();
+      if (this.prefs.auto) void this.rescan("flip");
     });
     this.original.addEventListener("click", () => {
       const on = this.layer.classList.toggle("original");
       this.original.setAttribute("aria-pressed", String(on));
     });
 
-    // auto mode: look again once the reader settles after scrolling or turning a page
-    const kick = (ms: number) => {
-      if (this.state !== "active" || !this.prefs.auto) return;
+    root.querySelectorAll<HTMLButtonElement>(".save-terms").forEach((btn) =>
+      btn.addEventListener("click", () => void this.saveGlossary(btn.classList.contains("again"))),
+    );
+    this.chip.addEventListener("click", (e) => {
+      const act = (e.target as HTMLElement).closest("button")?.dataset.act;
+      const box = this.hover;
+      if (!box || !act) return;
+      if (act === "retry") void this.retry(box);
+      if (act === "edit") this.openEditor(box);
+      if (act === "peek") box.peek();
+    });
+    $<HTMLButtonElement>(".edit-save").addEventListener("click", () => this.saveEdit());
+    $<HTMLButtonElement>(".edit-cancel").addEventListener("click", () => this.closeEditor());
+
+    // auto mode. Page flips (keys, clicks, wheel in paged readers) get a full rescan
+    // once things settle. Scrolling keeps up as it goes, for long webtoon strips.
+    const flipSoon = (ms: number) => {
+      if (!this.autoOn()) return;
       clearTimeout(this.autoTimer);
-      this.autoTimer = window.setTimeout(() => void this.rescan(), ms);
+      this.autoTimer = window.setTimeout(() => void this.rescan("flip"), ms);
     };
-    addEventListener("scroll", () => { this.schedule(); kick(600); }, { capture: true, passive: true });
-    addEventListener("resize", () => { this.schedule(); kick(600); });
-    addEventListener("wheel", () => kick(700), { passive: true });
+    addEventListener("scroll", () => {
+      this.schedule();
+      this.showChip(null);
+      if (!this.autoOn()) return;
+      // it scrolled, so whatever key or wheel started it wasn't a page flip
+      clearTimeout(this.autoTimer);
+      const now = performance.now();
+      if (now - this.lastScrollScan > 1000) {
+        this.lastScrollScan = now;
+        void this.rescan("scroll");
+      }
+      clearTimeout(this.scrollTimer);
+      this.scrollTimer = window.setTimeout(() => void this.rescan("scroll"), 400);
+    }, { capture: true, passive: true });
+    addEventListener("resize", () => { this.schedule(); flipSoon(600); });
+    addEventListener("wheel", () => flipSoon(700), { passive: true });
     addEventListener("keydown", (e) => {
-      if (e.key === "Escape" && this.state !== "idle") this.close();
-      else if (NAV_KEYS.has(e.key)) kick(700);
+      if (e.key === "Escape" && this.editing) this.closeEditor();
+      else if (e.key === "Escape" && this.state !== "idle") this.close();
+      else if (NAV_KEYS.has(e.key) && !this.editing) flipSoon(700);
     });
     addEventListener("click", (e) => {
-      if (!e.composedPath().includes(this.host)) kick(800);
+      if (!e.composedPath().includes(this.host)) flipSoon(800);
     }, true);
+    addEventListener("mousemove", (e) => this.onMouse(e.clientX, e.clientY), { passive: true });
     // fullscreen readers only paint what is inside the fullscreen element
     document.addEventListener("fullscreenchange", () => this.mount());
 
     this.mount();
+
+    // the floating logo only shows up on pages that look like a reader
+    send<Prefs>({ type: "prefs" })
+      .then((p) => {
+        this.prefs = p;
+        this.updateLogo();
+      })
+      .catch(() => {});
+    addEventListener("load", () => this.updateLogo());
+    const observer = new MutationObserver(() => {
+      if (this.logoCheck) return;
+      this.logoCheck = window.setTimeout(() => {
+        this.logoCheck = 0;
+        if (this.updateLogo()) observer.disconnect();
+      }, 1500);
+    });
+    observer.observe(document.documentElement, { childList: true, subtree: true });
   }
 
   toggle() {
@@ -134,9 +231,28 @@ export class Lens {
     else if (this.state === "active") this.close();
   }
 
+  private autoOn() {
+    return this.state === "active" && this.prefs.auto;
+  }
+
   private mount() {
     const parent = document.fullscreenElement ?? document.documentElement;
     if (this.host.parentNode !== parent) parent.append(this.host);
+  }
+
+  // returns true once the logo is showing for good
+  private updateLogo() {
+    const p = this.prefs;
+    let show = p.logo === "always" || (p.logo === "auto" && looksLikeComic());
+    if (p.hiddenSites.includes(location.hostname)) show = false;
+    this.logo.hidden = !show;
+    return show && p.logo === "auto";
+  }
+
+  private hideOnThisSite() {
+    this.prefs.hiddenSites = [...this.prefs.hiddenSites, location.hostname];
+    void send({ type: "save-prefs", prefs: { hiddenSites: this.prefs.hiddenSites } });
+    this.updateLogo();
   }
 
   // the screenshot must not contain our own UI
@@ -175,7 +291,7 @@ export class Lens {
       this.state = "active";
       this.bar.classList.add("show");
       this.timer = window.setInterval(() => this.schedule(), 500);
-      const added = this.merge(result, scrolled);
+      const added = this.merge(result, scrolled, true);
       if (!this.boxes.length) this.setStatus("Bu ekranda yazı bulunamadı");
       else this.translate(added);
 
@@ -187,16 +303,26 @@ export class Lens {
   }
 
   // quiet scan for auto mode and language changes, no big animation
-  private async rescan() {
-    if (this.state !== "active" || this.busy) return;
+  private async rescan(mode: Mode) {
+    if (this.state !== "active") return;
+    if (this.busy) {
+      // a flip asked while busy wins over a scroll
+      this.pending = mode === "flip" || this.pending === "flip" ? "flip" : "scroll";
+      return;
+    }
     this.busy = true;
     const run = this.run;
     this.stage.classList.add("busy");
     try {
-      const scrolled = await this.shoot();
+      let scrolled = { x: scrollX, y: scrollY };
+      if (mode === "flip") scrolled = await this.shoot();
+      // while scrolling the overlay stays visible, hiding it every second would flicker.
+      // our translated bubbles are still bubbles in the shot, so they match up fine
+      else await send({ type: "capture" });
+
       const result = await send<ScanResult>({ type: "detect" });
       if (run !== this.run) return;
-      const added = this.merge(result, scrolled);
+      const added = this.merge(result, scrolled, mode === "flip");
       this.translate(added);
       if (!this.boxes.length) this.setStatus("Bu ekranda yazı bulunamadı");
       else this.progress();
@@ -205,18 +331,25 @@ export class Lens {
     } finally {
       this.busy = false;
       this.stage.classList.remove("busy");
+      const next = this.pending;
+      this.pending = null;
+      // captureVisibleTab allows two shots a second, don't go back to back
+      if (next && run === this.run) setTimeout(() => void this.rescan(next), 500);
     }
   }
 
-  // Adds boxes for new text areas, keeps the ones already there,
-  // and drops on-screen boxes whose text is gone (the page changed).
-  private merge(result: ScanResult, scrolled: { x: number; y: number }) {
+  private toCss(result: ScanResult, scrolled: { x: number; y: number }) {
     // screenshot pixels -> CSS pixels, also covers devicePixelRatio and page zoom
     const k = innerWidth / result.width;
     const dx = scrolled.x - scrollX;
     const dy = scrolled.y - scrollY;
-    const toCss = (r: Rect) => ({ x: r.x * k + dx, y: r.y * k + dy, w: r.w * k, h: r.h * k });
+    return (r: Rect) => ({ x: r.x * k + dx, y: r.y * k + dy, w: r.w * k, h: r.h * k });
+  }
 
+  // Adds boxes for new text areas and keeps the ones already there. On a page flip
+  // it also drops on-screen boxes whose text is gone.
+  private merge(result: ScanResult, scrolled: { x: number; y: number }, dropGone: boolean) {
+    const toCss = this.toCss(result, scrolled);
     const keep = new Set<Box>();
     const fresh: Box[] = [];
 
@@ -230,7 +363,7 @@ export class Lens {
         continue;
       }
       const box = new Box(
-        { id: ++this.seq, bubble, text: toCss(r.text), lines: r.lines.map(toCss), round: r.round, bg: r.bg },
+        { id: ++this.seq, bubble, text: toCss(r.text), lines: r.lines.map(toCss), round: r.round, bg: r.bg, dark: r.dark },
         fresh.length,
         { id: this.seq, text: r.text, bubble: r.bubble, limit: charLimit(bubble, r.round) },
       );
@@ -238,18 +371,25 @@ export class Lens {
     }
     this.host.style.removeProperty("visibility");
 
-    // only boxes fully in view can be judged, a half visible bubble isn't detected anyway
-    const gone = this.boxes.filter((b) => !keep.has(b) && b.rect && inView(b.rect));
-    this.remove(gone);
-    this.boxes = this.boxes.filter((b) => !gone.includes(b)).concat(fresh);
+    if (dropGone) {
+      // only boxes fully in view can be judged, a half visible bubble isn't detected anyway
+      const gone = this.boxes.filter((b) => !keep.has(b) && b.rect && inView(b.rect));
+      this.remove(gone);
+      this.boxes = this.boxes.filter((b) => !gone.includes(b));
+    }
+    this.boxes = this.boxes.concat(fresh);
 
     this.layer.append(...fresh.map((b) => b.el));
     fresh.forEach((b) => b.place());
     return fresh;
   }
 
-  private translate(list: Box[]) {
+  private translate(list: Box[], fresh = false) {
     if (!list.length) return;
+    if (this.freshNext) {
+      fresh = true;
+      this.freshNext = false;
+    }
     const run = this.run;
     const byId = new Map(list.map((b) => [b.id, b]));
     const port = chrome.runtime.connect({ name: "translate" });
@@ -259,7 +399,11 @@ export class Lens {
     port.onMessage.addListener((m: PortMessage) => {
       if (run !== this.run) return;
       if (m.type === "item") {
-        byId.get(m.id)?.fill(m.text, this.target.value);
+        const box = byId.get(m.id);
+        if (box) {
+          box.key = m.key;
+          box.fill(m.text, this.target.value);
+        }
       } else if (m.type === "done") {
         m.missing.forEach((id) => byId.get(id)?.fail());
         port.disconnect();
@@ -282,21 +426,127 @@ export class Lens {
       }
     });
 
-    const job: TranslateJob = { regions: list.map((b) => b.job), source: this.source.value, target: this.target.value };
+    const job: TranslateJob = {
+      regions: list.map((b) => b.job),
+      source: this.source.value,
+      target: this.target.value,
+      series: seriesKey(location.href),
+      fresh,
+    };
     port.postMessage(job);
     this.progress();
   }
 
-  // language changed: start over from a fresh screenshot
-  private retranslate() {
+  // language or glossary changed: start over from a fresh screenshot
+  private retranslate(fresh = false) {
     if (this.state !== "active") return;
     this.run++;
     this.error = "";
+    this.freshNext = fresh;
     this.dropPorts();
+    this.showChip(null);
+    this.closeEditor();
     this.remove(this.boxes);
     this.boxes = [];
     this.busy = false;
-    void this.rescan();
+    void this.rescan("flip");
+  }
+
+  // one bubble came out wrong: find it in a new shot and ask again, skipping the cache
+  private async retry(box: Box) {
+    if (this.busy || !box.rect) return;
+    this.busy = true;
+    const run = this.run;
+    const where = box.rect;
+    this.showChip(null);
+    box.reset();
+    try {
+      const scrolled = await this.shoot();
+      const result = await send<ScanResult>({ type: "detect" });
+      if (run !== this.run) return;
+      const toCss = this.toCss(result, scrolled);
+      const match = result.regions.find((r) => overlap(toCss(r.bubble), where) > 0.5);
+      if (!match) {
+        box.fail();
+        this.setStatus("Balon yeniden bulunamadı");
+        return;
+      }
+      box.job = { ...box.job, text: match.text, bubble: match.bubble };
+      this.translate([box], true);
+    } catch (err) {
+      box.fail();
+      console.warn("[manga-lens] retry failed", err);
+    } finally {
+      this.busy = false;
+    }
+  }
+
+  private onMouse(x: number, y: number) {
+    if (this.state !== "active" || this.editing || this.panel.classList.contains("show")) return;
+    // a bit of room above the bubble so the pointer can reach the chip
+    const box = this.boxes.find((b) => {
+      const r = b.rect;
+      if (!r || !(b.done || b.failed)) return false;
+      return x >= r.x - 4 && x <= r.x + r.w + 4 && y >= r.y - 34 && y <= r.y + r.h + 4;
+    });
+    if (box !== this.hover) this.showChip(box ?? null);
+  }
+
+  private showChip(box: Box | null) {
+    this.hover = box;
+    this.chip.classList.toggle("show", !!box);
+    if (!box?.rect) return;
+    const r = box.rect;
+    this.chip.style.left = `${Math.max(4, r.x + r.w - 96)}px`;
+    this.chip.style.top = `${Math.max(4, r.y - 32)}px`;
+  }
+
+  private openEditor(box: Box) {
+    if (!box.rect) return;
+    this.editing = box;
+    this.showChip(null);
+    this.editText.value = box.raw;
+    const r = box.rect;
+    this.editor.style.left = `${Math.min(Math.max(4, r.x), innerWidth - 284)}px`;
+    this.editor.style.top = `${Math.min(r.y + r.h + 6, innerHeight - 140)}px`;
+    this.editor.classList.add("show");
+    this.editText.focus();
+  }
+
+  private saveEdit() {
+    const box = this.editing;
+    const text = this.editText.value.trim();
+    this.closeEditor();
+    if (!box || !text) return;
+    box.fill(text, this.target.value);
+    // next time this bubble shows up, use the fixed text
+    if (box.key) void send({ type: "remember", key: box.key, text });
+    this.progress();
+  }
+
+  private closeEditor() {
+    this.editing = null;
+    this.editor.classList.remove("show");
+  }
+
+  private async openGlossary() {
+    const open = this.panel.classList.toggle("show");
+    if (!open) return;
+    this.showChip(null);
+    const series = seriesKey(location.href);
+    this.panel.querySelector(".series")!.textContent = series;
+    try {
+      const g = await send<Glossary>({ type: "glossary", series });
+      this.terms.value = g.terms;
+    } catch {
+      this.terms.value = "";
+    }
+  }
+
+  private async saveGlossary(again: boolean) {
+    await send({ type: "save-glossary", series: seriesKey(location.href), terms: this.terms.value });
+    this.panel.classList.remove("show");
+    if (again) this.retranslate(true);
   }
 
   private progress() {
@@ -354,9 +604,14 @@ export class Lens {
     this.run++;
     this.state = "idle";
     this.busy = false;
+    this.pending = null;
     clearInterval(this.timer);
     clearTimeout(this.autoTimer);
+    clearTimeout(this.scrollTimer);
     this.dropPorts();
+    this.showChip(null);
+    this.closeEditor();
+    this.panel.classList.remove("show");
     this.stage.classList.remove("on", "scanning", "busy");
     this.bar.classList.remove("show");
     this.layer.classList.remove("original");
@@ -365,6 +620,16 @@ export class Lens {
     this.remove(this.boxes);
     this.boxes = [];
   }
+}
+
+// a big image or canvas on the page, most readers have one
+function looksLikeComic() {
+  const els = document.querySelectorAll("img, canvas, [style*='background-image']");
+  for (let i = 0; i < els.length && i < 500; i++) {
+    const r = els[i].getBoundingClientRect();
+    if (r.width >= 300 && r.height >= 300) return true;
+  }
+  return false;
 }
 
 // rough number of characters that fit at a still readable size
