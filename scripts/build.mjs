@@ -45,7 +45,7 @@ if (!watch) {
 if (dev) {
   // test sayfasında eklenti api'leri yok, dev/chrome-shim.ts taklit ediyor
   await mkdir("dev/pages", { recursive: true });
-  const pages = (await readdir("dev/pages")).filter((f) => /\.(png|jpe?g|webp)$/i.test(f));
+  const pages = (await readdir("dev/pages")).filter((f) => /\.(png|jpe?g|webp|svg)$/i.test(f));
   await writeFile("dev/pages.json", JSON.stringify(pages));
   await copyFonts("dev/fonts");
 

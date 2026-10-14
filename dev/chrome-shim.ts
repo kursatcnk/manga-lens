@@ -13,6 +13,47 @@ let prefs: Prefs = { target: "tr", auto: false, logo: "always", hiddenSites: [] 
 const glossaries: Record<string, Glossary> = {};
 let fixes = 0;
 
+// adres satırından: hold = çeviri hiç gelmesin (mavi hali görmek için)
+const params = new URLSearchParams(location.search);
+const hold = params.has("hold");
+
+// test sayfasının yanında pages/<sayfa>.json varsa çeviriler oradan geliyor.
+// "at" balonun sayfadaki yeri (resmin kendi pikseliyle), en yakın olan seçiliyor
+interface Fixture {
+  items: { at: [number, number]; text: string }[];
+  terms?: string;
+}
+let fixture: Fixture | null = null;
+
+export async function loadFixture(page: string) {
+  fixture = null;
+  try {
+    const res = await fetch(`pages/${encodeURIComponent(page)}.json`);
+    if (res.ok) fixture = await res.json();
+  } catch {
+    // yoksa örnek cümleler kullanılır
+  }
+}
+
+function fromFixture(r: TranslateJob["regions"][number]) {
+  const img = document.querySelector<HTMLImageElement>("#page");
+  if (!fixture || !img) return null;
+  const box = img.getBoundingClientRect();
+  const k = img.naturalWidth / box.width;
+  const x = ((r.text.x + r.text.w / 2) / devicePixelRatio - box.left) * k;
+  const y = ((r.text.y + r.text.h / 2) / devicePixelRatio - box.top) * k;
+  let best = fixture.items[0];
+  let bestD = Infinity;
+  for (const it of fixture.items) {
+    const d = (it.at[0] - x) ** 2 + (it.at[1] - y) ** 2;
+    if (d < bestD) {
+      bestD = d;
+      best = it;
+    }
+  }
+  return best ? best.text : null;
+}
+
 const SAMPLES = [
   "Hey!",
   "Ne oluyor burada?",
@@ -50,10 +91,12 @@ function fakePort() {
     onDisconnect: { addListener: () => {} },
     disconnect: () => (open = false),
     postMessage(job: TranslateJob) {
+      if (hold) return;
       const emit = (m: PortMessage) => open && handlers.forEach((h) => h(m));
       job.regions.forEach((r, i) => {
         setTimeout(() => {
-          const text = job.target === "en" ? "Sample translation goes here." : SAMPLES[(r.id + i + (job.fresh ? 3 : 0)) % SAMPLES.length];
+          let text = fromFixture(r);
+          if (!text) text = job.target === "en" ? "Sample translation goes here." : SAMPLES[(r.id + i + (job.fresh ? 3 : 0)) % SAMPLES.length];
           emit({ type: "item", id: r.id, text, key: `fake-${r.id}` });
           if (i === job.regions.length - 1) emit({ type: "done", missing: [] });
         }, 300 + i * 220 + Math.random() * 400);
@@ -83,7 +126,7 @@ const shim = {
             alert("ayarlar sayfası eklentide açılır");
             return { ok: true, data: null };
           case "glossary":
-            return { ok: true, data: glossaries[msg.series] ?? { terms: "", recent: [] } };
+            return { ok: true, data: glossaries[msg.series] ?? { terms: fixture?.terms ?? "", recent: [] } };
           case "save-glossary":
             glossaries[msg.series] = { terms: msg.terms, recent: [] };
             return { ok: true, data: null };
