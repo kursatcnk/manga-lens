@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Manga Lens ayarları</title>
+    <style>
+      :root {
+        --bg: #f5f6fa;
+        --card: #fff;
+        --text: #171a24;
+        --muted: #646b7d;
+        --line: #dfe2ea;
+        --accent: #5b6cff;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #0f1118;
+          --card: #181b25;
+          --text: #e9ecf5;
+          --muted: #9aa1b4;
+          --line: #2a2f3d;
+        }
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 "Segoe UI", system-ui, sans-serif; }
+      main { max-width: 560px; margin: 40px auto; padding: 0 16px; }
+      h1 { font-size: 22px; margin: 0 0 4px; display: flex; align-items: center; gap: 10px; }
+      p.lead { color: var(--muted); margin: 0 0 24px; }
+      section { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 18px; margin-bottom: 16px; }
+      h2 { font-size: 15px; margin: 0 0 12px; }
+      label { display: block; font-weight: 600; margin: 12px 0 4px; }
+      label:first-of-type { margin-top: 0; }
+      input[type="password"], select { width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: inherit; font: inherit; }
+      select option { color: #111; }
+      .row { display: flex; gap: 16px; }
+      .row label { font-weight: normal; display: flex; gap: 6px; align-items: center; margin: 0; }
+      .hint { color: var(--muted); font-size: 13px; margin: 4px 0 0; }
+      .hint a { color: var(--accent); }
+      [hidden] { display: none !important; }
+      .actions { display: flex; align-items: center; gap: 12px; }
+      button { background: var(--accent); color: #fff; border: 0; border-radius: 8px; padding: 9px 18px; font: inherit; font-weight: 600; cursor: pointer; }
+      .saved { color: #2f9e5b; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Manga Lens</h1>
+      <p class="lead">Okuduğun sayfadaki balonları yerinde çevirir. Çeviri, seçtiğin yapay zekâ servisine kendi anahtarınla gider.</p>
+
+      <form id="form">
+        <section>
+          <h2>Çeviri servisi</h2>
+          <div class="row">
+            <label><input type="radio" name="provider" value="claude" /> Claude</label>
+            <label><input type="radio" name="provider" value="gemini" /> Gemini</label>
+          </div>
+
+          <div data-for="claude">
+            <label for="claudeKey">Claude API anahtarı</label>
+            <input id="claudeKey" type="password" autocomplete="off" spellcheck="false" />
+            <p class="hint">Anahtarı <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noreferrer">Claude Console</a> üzerinden alabilirsin.</p>
+            <label for="claudeModel">Model</label>
+            <select id="claudeModel"></select>
+          </div>
+
+          <div data-for="gemini">
+            <label for="geminiKey">Gemini API anahtarı</label>
+            <input id="geminiKey" type="password" autocomplete="off" spellcheck="false" />
+            <p class="hint">Anahtarı <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer">Google AI Studio</a> üzerinden alabilirsin.</p>
+            <label for="geminiModel">Model</label>
+            <select id="geminiModel"></select>
+          </div>
+          <p class="hint">Anahtar sadece bu tarayıcıda saklanır, başka hiçbir yere gönderilmez.</p>
+        </section>
+
+        <section>
+          <h2>Okuma</h2>
+          <label for="target">Çeviri dili</label>
+          <select id="target">
+            <option value="tr">Türkçe</option>
+            <option value="en">İngilizce</option>
+          </select>
+          <label><input id="auto" type="checkbox" /> Sayfa değişince otomatik çevir</label>
+          <p class="hint">Kısayol: Alt+Shift+T. Değiştirmek için chrome://extensions/shortcuts</p>
+        </section>
+
+        <div class="actions">
+          <button type="submit">Kaydet</button>
+          <span class="saved" id="saved" hidden>Kaydedildi</span>
+        </div>
+      </form>
+    </main>
+    <script type="module" src="options.js"></script>
+  </body>
+</html>
