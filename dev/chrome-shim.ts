@@ -1,9 +1,9 @@
 import { analyze } from "../src/detect/analyze";
 import type { Glossary, PortMessage, Prefs, Request, TabMessage, TranslateJob } from "../src/shared/messages";
 
-// Stands in for the extension APIs on the harness page. "capture" paints the test
-// image into a viewport-sized canvas like captureVisibleTab would, and translation
-// answers with sample sentences so the layout can be checked without an API key.
+// Test sayfasında eklenti api'lerinin yerine geçiyor. "capture" test resmini ekran
+// boyutunda bir canvas'a çiziyor (captureVisibleTab gibi), çeviri de örnek cümlelerle
+// cevap veriyor, böylece API anahtarı olmadan yerleşime bakılabiliyor.
 
 type Listener = (msg: TabMessage) => void;
 

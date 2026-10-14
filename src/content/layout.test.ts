@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { fitText, lineWidths } from "./layout";
 
-// every character is 0.6em wide, close enough to a comic font
+// her karakter 0.6em genişlikte, çizgi roman fontuna yeterince yakın
 const measure = (s: string, size: number) => s.length * size * 0.6;
 
 describe("fitText", () => {

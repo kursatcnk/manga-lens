@@ -10,11 +10,11 @@ export interface Settings {
   auto: boolean;
   logo: "auto" | "always" | "never";
   hiddenSites: string[];
-  // -san, -kun, senpai... keep them as they are or turn them into Turkish
+  // -san, -kun, senpai... olduğu gibi kalsın mı Türkçeleşsin mi
   honorifics: "keep" | "adapt";
 }
 
-// first one is the default; for reading, speed matters more than the last bit of quality
+// ilk sıradaki varsayılan; okurken hız, son bir tutam kaliteden daha önemli
 export const CLAUDE_MODELS = ["claude-haiku-5-5", "claude-sonnet-5-5", "claude-opus-5-5"];
 export const GEMINI_MODELS = ["gemini-3.5-flash-lite", "gemini-3.8-flash"];
 

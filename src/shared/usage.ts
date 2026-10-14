@@ -1,8 +1,8 @@
-// Rough spending tracker. The user pays with their own key, so they should see
-// what a page costs without opening the provider's console.
+// Kabaca harcama takibi. Kullanıcı kendi anahtarıyla ödüyor, bir sayfanın ne
+// tuttuğunu sağlayıcının paneline girmeden görebilsin.
 
-// USD per million tokens [input, output]
-// Gemini 3.8 Flash has an intro price until the end of 2026, it doubles after that
+// milyon token başına dolar [girdi, çıktı]
+// Gemini 3.8 Flash'ın 2026 sonuna kadar tanıtım fiyatı var, sonra iki katına çıkıyor
 const PRICES: Record<string, [number, number]> = {
   "claude-opus-5-5": [4, 20],
   "claude-sonnet-5-5": [2, 10],
@@ -18,7 +18,7 @@ export interface ModelUsage {
   output: number;
 }
 
-// month ("2026-10") -> model -> usage
+// ay ("2026-10") -> model -> kullanım
 export type UsageLog = Record<string, Record<string, ModelUsage>>;
 
 export function costOf(model: string, u: ModelUsage) {
@@ -36,8 +36,8 @@ export async function loadUsage(): Promise<UsageLog> {
   return (usage as UsageLog | undefined) ?? {};
 }
 
-// two requests finishing together could both read the old value,
-// so writes go through one promise chain
+// iki istek aynı anda biterse ikisi de eski değeri okuyabilir,
+// o yüzden yazmalar tek bir promise zincirinden geçiyor
 let queue = Promise.resolve();
 
 export function addUsage(model: string, input: number, output: number, bubbles: number) {

@@ -1,7 +1,7 @@
 const VOWELS = "aeıioöuüâîûAEIİOÖUÜÂÎÛ";
 
-// Turkish syllables: every syllable has one vowel, and when consonants sit between
-// two vowels only the last one moves to the next syllable (TÜRK-ÇE, GÖZ-LE-Rİ).
+// Türkçe heceleme: her hecede bir sesli harf var, iki sesli arasında sessizler
+// varsa sadece sonuncusu sonraki heceye geçiyor (TÜRK-ÇE, GÖZ-LE-Rİ).
 export function syllables(word: string): string[] {
   const vowels: number[] = [];
   for (let i = 0; i < word.length; i++) {
@@ -21,8 +21,8 @@ export function syllables(word: string): string[] {
   return parts;
 }
 
-// Ways to split a word at a line end, longest first part first.
-// Both sides keep at least two letters, nobody wants "A-" or "-N".
+// Kelimeyi satır sonunda bölmenin yolları, önce en uzun baş kısım.
+// İki tarafta da en az iki harf kalsın, "A-" ya da "-N" çok kötü duruyor.
 export function splits(word: string): [string, string][] {
   if (word.includes("-")) {
     const i = word.indexOf("-");

@@ -1,7 +1,7 @@
 import type { Rect } from "../shared/messages";
 
-// Ties a viewport rect to the element under it, so the overlay follows the page
-// when it scrolls, an inner reader container scrolls, or the image is resized.
+// Ekrandaki bir alanı altındaki elemana bağlıyor. Sayfa ya da okuyucunun içindeki
+// kutu kaysa veya resim boyut değiştirse de katman onunla beraber gidiyor.
 export class Anchor {
   private readonly target: Element;
   private readonly base: DOMRect;

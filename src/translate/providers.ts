@@ -30,14 +30,14 @@ export async function streamTranslation(s: Settings, image: string, prompt: stri
 }
 
 async function claude(s: Settings, image: string, prompt: string, onText: OnText, signal: AbortSignal): Promise<Tokens> {
-  // the key belongs to the user and never leaves their browser except to the API
+  // anahtar kullanıcının, tarayıcıdan sadece API'ye gidiyor
   const client = new Anthropic({ apiKey: s.claudeKey, dangerouslyAllowBrowser: true });
 
-  // Translating bubbles needs no thinking, and thinking is most of the wait.
-  // Haiku can turn it off, Sonnet does it with between_tools, Opus can't, so it gets
-  // low effort plus the server-side fallback (the other two can't use that here).
+  // Balon çevirmek için düşünmeye gerek yok, beklemenin çoğu da düşünmekten.
+  // Haiku'da kapatılabiliyor, Sonnet'te between_tools ile, Opus'ta kapanmıyor, ona
+  // düşük effort ve sunucu tarafı yedek model (diğer ikisi burada onu kullanamıyor).
   const model = s.claudeModel;
-  // loosely typed, the installed SDK types don't know between_tools yet
+  // tipi gevşek, kurulu SDK'nın tipleri between_tools'u henüz bilmiyor
   const extra: Record<string, unknown> = model.includes("haiku")
     ? { thinking: { type: "disabled" } }
     : model.includes("sonnet")
@@ -76,12 +76,12 @@ async function claude(s: Settings, image: string, prompt: string, onText: OnText
   }
 }
 
-// models that said no to "minimal" thinking, so we don't ask again
+// "minimal" düşünmeyi reddeden modeller, bir daha sormayalım
 const noMinimal = new Set<string>();
 
 async function gemini(s: Settings, image: string, prompt: string, onText: OnText, signal: AbortSignal): Promise<Tokens> {
-  // default thinking is "high", slow and pointless for bubbles. 3.8 Flash goes down to "low",
-  // lite models might allow "minimal", the docs don't say, so try and fall back
+  // varsayılan düşünme "high", balon için yavaş ve gereksiz. 3.8 Flash en fazla "low"a iniyor,
+  // lite modeller "minimal"ı kabul edebilir, dokümanda yazmıyor, dene olmazsa düş
   const model = s.geminiModel;
   const level = model.includes("lite") && !noMinimal.has(model) ? "minimal" : "low";
 
@@ -114,7 +114,7 @@ async function gemini(s: Settings, image: string, prompt: string, onText: OnText
     throw new TranslateError("other", `Gemini ${res.status}: ${body.slice(0, 200)}`);
   }
 
-  // server-sent events, every "data:" line is a JSON chunk
+  // server-sent events, her "data:" satırı bir JSON parçası
   const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
   let buf = "";
   const tokens = { input: 0, output: 0 };
@@ -133,8 +133,8 @@ async function gemini(s: Settings, image: string, prompt: string, onText: OnText
         const parts: { text?: string }[] = cand?.content?.parts ?? [];
         const text = parts.map((p) => p.text ?? "").join("");
         if (text) onText(text);
-        // the running totals come with the chunks, the last one is the real count.
-        // thinking tokens are billed as output too
+        // toplamlar parçalarla geliyor, en sondaki gerçek sayı.
+        // düşünme token'ları da çıktı olarak ücretleniyor
         const u = chunk.usageMetadata;
         if (u) {
           tokens.input = u.promptTokenCount ?? tokens.input;

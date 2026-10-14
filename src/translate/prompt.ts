@@ -1,24 +1,24 @@
 import type { Rect, TranslateJob } from "../shared/messages";
 import { LANGS } from "../shared/settings";
 
-// smaller image = fewer input tokens = faster answer, bubble text is still readable
+// küçük resim = az token = hızlı cevap, balondaki yazı yine okunuyor
 const MAX_SIDE = 1280;
 
 export interface Extras {
-  terms: string; // series glossary, "a = b" lines
-  recent: string[]; // last lines translated in this series
+  terms: string; // serinin sözlüğü, "a = b" satırları
+  recent: string[]; // bu seride son çevrilen satırlar
   honorifics: "keep" | "adapt";
 }
 
-// Crops the part of the screen that has text on it and draws numbered boxes on it,
-// so the model can answer per box.
+// Ekranın yazı olan kısmını kesip üstüne numaralı kutular çiziyor,
+// model de her kutu için ayrı cevap veriyor.
 export async function buildRequest(shot: ImageBitmap, job: TranslateJob, extras: Extras) {
   const all = job.regions.map((r) => r.bubble);
   let x0 = Math.min(...all.map((r) => r.x));
   let y0 = Math.min(...all.map((r) => r.y));
   let x1 = Math.max(...all.map((r) => r.x + r.w));
   let y1 = Math.max(...all.map((r) => r.y + r.h));
-  // a single bubble alone says little, show who's talking around it too
+  // tek başına balon az şey anlatıyor, etrafındaki konuşanı da göster
   const margin = Math.max(60, Math.max(x1 - x0, y1 - y0) * 0.75);
   x0 -= margin;
   y0 -= margin;

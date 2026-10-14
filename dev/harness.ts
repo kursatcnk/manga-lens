@@ -1,4 +1,4 @@
-// the shim has to be in place before the content script runs
+// sahte chrome api'si content script'ten önce yüklenmeli
 import "./chrome-shim";
 import "../src/content/index";
 

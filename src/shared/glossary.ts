@@ -1,10 +1,10 @@
 import type { Glossary } from "./messages";
 
-// Which series a page belongs to. Readers put the chapter/page number in the URL,
-// so dropping the parts with digits in them leaves the series:
-//   site.com/manga/some-title/chapter-12/3  ->  site.com/manga/some-title
-// Not perfect (some sites use ids for the series too) but good enough to keep
-// names consistent between chapters.
+// Sayfa hangi seriye ait. Okuyucular bölüm/sayfa numarasını adrese koyuyor,
+// rakam olan kısımları atınca seri kalıyor:
+//   site.com/manga/bir-seri/chapter-12/3  ->  site.com/manga/bir-seri
+// Kusursuz değil (bazı siteler seriyi de numarayla tutuyor) ama bölümler arasında
+// isimleri aynı tutmaya yetiyor.
 export function seriesKey(url: string) {
   try {
     const u = new URL(url);
@@ -15,7 +15,7 @@ export function seriesKey(url: string) {
   }
 }
 
-// "Akira-san = Akira Abi" lines -> pairs, anything else is ignored
+// "Akira-san = Akira Abi" satırları -> çiftler, geri kalanı yok sayılıyor
 export function parseTerms(text: string): [string, string][] {
   const out: [string, string][] = [];
   for (const line of text.split("\n")) {
@@ -28,7 +28,7 @@ export function parseTerms(text: string): [string, string][] {
   return out;
 }
 
-// adds names the model found, never overwrites what the user wrote
+// modelin bulduğu isimleri ekliyor, kullanıcının yazdığının üstüne yazmıyor
 export function addTerms(text: string, found: [string, string][]) {
   const known = new Set(parseTerms(text).map(([a]) => a.toLowerCase()));
   const lines = text.trim() ? [text.trim()] : [];

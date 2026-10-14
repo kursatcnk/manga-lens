@@ -1,15 +1,15 @@
-// Draws the toolbar icons (lens ring + speech bubble) without any image tools.
+// Araç çubuğu ikonlarını (mercek + konuşma balonu) resim programı olmadan çiziyor.
 // node scripts/icons.mjs -> src/icons/{16,32,48,128}.png
 import { mkdir, writeFile } from "node:fs/promises";
 import { deflateSync } from "node:zlib";
 
-const SS = 4; // supersampling per axis
+const SS = 4; // kenarlar yumuşak olsun diye her pikseli 4x4 örnekliyoruz
 
 function mix(a, b, t) {
   return a.map((v, i) => v + (b[i] - v) * t);
 }
 
-// gradient along the diagonal, same colors as the in-page logo
+// çapraz renk geçişi, sayfadaki logoyla aynı renkler
 function ringColor(x, y) {
   const t = Math.min(1, Math.max(0, (x + y) / 2));
   return t < 0.5 ? mix([91, 140, 255], [176, 107, 255], t * 2) : mix([176, 107, 255], [255, 111, 168], (t - 0.5) * 2);
@@ -28,16 +28,16 @@ function distToSegment(x, y, ax, ay, bx, by) {
   return Math.hypot(x - (ax + t * dx), y - (ay + t * dy));
 }
 
-// shapes in a 0..1 square, returns [r, g, b, a] or null
+// 0..1 karede şekiller, [r, g, b, a] ya da null döner
 function sample(x, y) {
-  // white bubble inside the lens
+  // merceğin içindeki beyaz balon
   if (inRoundRect(x, y, 0.27, 0.33, 0.62, 0.56, 0.06)) return [255, 255, 255, 255];
-  // bubble tail
+  // balonun kuyruğu
   if (y > 0.55 && y < 0.66 && x > 0.36 && x < 0.46 && x - 0.36 < (0.66 - y) * 0.9) return [255, 255, 255, 255];
   const d = Math.hypot(x - 0.445, y - 0.445);
   if (d > 0.28 && d < 0.37) return [...ringColor(x, y), 255];
   if (distToSegment(x, y, 0.71, 0.71, 0.87, 0.87) < 0.06) return [...ringColor(x, y), 255];
-  // dark round background
+  // koyu yuvarlak arka plan
   if (Math.hypot(x - 0.5, y - 0.5) < 0.5) return [20, 24, 38, 255];
   return null;
 }
@@ -92,7 +92,7 @@ function png(size, px) {
   ihdr[9] = 6; // RGBA
   const raw = Buffer.alloc(size * (size * 4 + 1));
   for (let y = 0; y < size; y++) {
-    raw[y * (size * 4 + 1)] = 0; // no filter
+    raw[y * (size * 4 + 1)] = 0; // filtre yok
     px.copy(raw, y * (size * 4 + 1) + 1, y * size * 4, (y + 1) * size * 4);
   }
   return Buffer.concat([

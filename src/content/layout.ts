@@ -8,17 +8,17 @@ export interface Fit {
   lines: string[];
 }
 
-const LINE = 1.12; // line height factor
+const LINE = 1.12; // satır yüksekliği çarpanı
 const MIN_SIZE = 7;
 
-// Finds the biggest font size where the text fits inside the bubble.
-// Round bubbles get shorter lines near the top and bottom, like real lettering.
+// Yazının balona sığdığı en büyük font boyutunu buluyor.
+// Yuvarlak balonda üst ve alt satırlar kısa, gerçek çevirilerdeki gibi.
 export function fitText(text: string, w: number, h: number, round: boolean, measure: Measure, hyphenate = true): Fit | null {
   const words = text.trim().split(/\s+/).filter(Boolean);
   if (!words.length || w < 10 || h < 10) return null;
 
-  // letterers avoid hyphens: split long words only when it buys a clearly bigger font,
-  // and short ones only when nothing else fits at all
+  // çevirmenler tireyi pek sevmiyor: uzun kelimeyi sadece font belirgin büyüyorsa böl,
+  // kısa kelimeyi de ancak başka türlü hiç sığmıyorsa
   const plain = search(words, w, h, round, measure, "none");
   const split = hyphenate ? search(words, w, h, round, measure, "long") : null;
   if (plain && split) return split.size >= plain.size * 1.2 ? split : plain;
@@ -36,14 +36,14 @@ function search(words: string[], w: number, h: number, round: boolean, measure: 
       const widths = lineWidths(n, lh, w, h, round);
       if (widths.some((x) => x < size * 1.5)) continue;
       const lines = breakLines(words, widths, (s) => measure(s, size), hyphenate);
-      // fewer lines would be centered differently than the widths assumed
+      // daha az satır olursa farklı ortalanır, hesapladığımız genişlikler tutmaz
       if (lines && lines.length === n) return { size, lineHeight: lh, lines };
     }
   }
   return null;
 }
 
-// usable width of each line when n lines are centered vertically
+// n satır dikeyde ortalanınca her satıra kalan genişlik
 export function lineWidths(n: number, lh: number, w: number, h: number, round: boolean) {
   const top = (h - n * lh) / 2;
   const out: number[] = [];
@@ -52,7 +52,7 @@ export function lineWidths(n: number, lh: number, w: number, h: number, round: b
       out.push(w * 0.92);
       continue;
     }
-    // ellipse width at both edges of the line, the narrower one wins
+    // satırın üst ve alt kenarında elipsin genişliği, darı geçerli
     const at = (y: number) => {
       const d = (y - h / 2) / (h / 2);
       return w * Math.sqrt(Math.max(0, 1 - d * d));
@@ -76,7 +76,7 @@ function breakLines(words: string[], widths: number[], width: (s: string) => num
         queue.shift();
         continue;
       }
-      // doesn't fit whole: hyphenate if that fills the line noticeably
+      // kelime bütün sığmıyor: satırı epey dolduruyorsa hecesinden böl
       const room = max - (line ? width(line + " ") : 0);
       const long = queue[0].replace(/[^\p{L}]/gu, "").length >= 7;
       if (hyphenate === "any" || (hyphenate === "long" && long)) {
@@ -90,7 +90,7 @@ function breakLines(words: string[], widths: number[], width: (s: string) => num
       }
       break;
     }
-    if (!line) return null; // a word that can't fit even split up
+    if (!line) return null; // bölünse bile sığmayan kelime
     lines.push(line);
   }
   return queue.length ? null : lines;

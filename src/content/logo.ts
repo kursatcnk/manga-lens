@@ -1,4 +1,4 @@
-// A lens ring with a speech bubble inside it.
+// İçinde konuşma balonu olan bir mercek.
 export const logoSvg = `
 <svg viewBox="0 0 32 32" width="26" height="26" aria-hidden="true">
   <defs>

@@ -7,7 +7,7 @@ declare global {
   }
 }
 
-// the script can be injected twice when the extension reloads
+// eklenti yenilenince script iki kere yüklenebiliyor
 if (!window.__mangaLens) {
   const lens = new Lens();
   window.__mangaLens = lens;

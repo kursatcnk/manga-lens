@@ -7,12 +7,12 @@ export interface Rect {
 
 export interface Region {
   id: number;
-  bubble: Rect; // white area the text sits in, screenshot pixels
+  bubble: Rect; // yazının içinde durduğu beyaz alan, ekran görüntüsü pikseli
   text: Rect;
   lines: Rect[];
   round: boolean;
   bg: string;
-  dark: boolean; // white text on a black bubble
+  dark: boolean; // siyah balonda beyaz yazı
 }
 
 export interface ScanResult {
@@ -29,9 +29,9 @@ export interface Prefs {
 }
 
 export interface Glossary {
-  // one "original = translation" per line, written by hand or learned from the model
+  // her satırda bir "orijinal = çeviri", elle yazılmış ya da modelden öğrenilmiş
   terms: string;
-  // last few translated lines, so the next page keeps the same voice
+  // son çevrilen birkaç satır, sonraki sayfa aynı tonda devam etsin
   recent: string[];
 }
 
@@ -49,13 +49,13 @@ export type TabMessage = { type: "toggle" };
 
 export type Reply<T> = { ok: true; data: T } | { ok: false; error: string };
 
-// over the "translate" port
+// "translate" portundan gidiyor
 export interface TranslateJob {
   regions: { id: number; text: Rect; bubble: Rect; limit: number }[];
   source: string;
   target: string;
   series: string;
-  // skip the cache, used by "translate this bubble again"
+  // önbelleği atla, "bu balonu tekrar çevir" için
   fresh?: boolean;
 }
 

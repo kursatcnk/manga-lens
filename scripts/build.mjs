@@ -43,7 +43,7 @@ if (!watch) {
 }
 
 if (dev) {
-  // the harness page has no extension APIs, dev/chrome-shim.ts fakes them
+  // test sayfasında eklenti api'leri yok, dev/chrome-shim.ts taklit ediyor
   await mkdir("dev/pages", { recursive: true });
   const pages = (await readdir("dev/pages")).filter((f) => /\.(png|jpe?g|webp)$/i.test(f));
   await writeFile("dev/pages.json", JSON.stringify(pages));

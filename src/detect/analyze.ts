@@ -1,7 +1,7 @@
 import type { Rect, ScanResult } from "../shared/messages";
 import { findBubbles } from "./heuristic";
 
-// full-res retina shots are slow to label and gain nothing
+// tam çözünürlüklü retina görüntüyü işlemek yavaş, bir şey de kazandırmıyor
 const MAX_WIDTH = 1400;
 
 export function analyze(shot: ImageBitmap): ScanResult {
@@ -15,7 +15,7 @@ export function analyze(shot: ImageBitmap): ScanResult {
   ctx.drawImage(shot, 0, 0, w, h);
 
   const found = findBubbles(ctx.getImageData(0, 0, w, h));
-  // manga reads top to bottom, right to left
+  // manga yukarıdan aşağı, sağdan sola okunuyor
   found.sort((a, b) => a.text.y - b.text.y || b.text.x - a.text.x);
 
   const regions = found.map((d, id) => ({

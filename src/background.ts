@@ -5,8 +5,8 @@ import { loadSettings, saveSettings } from "./shared/settings";
 import { cacheSet, pruneCache } from "./translate/cache";
 import { translate } from "./translate/run";
 
-// Capture and detect are separate calls so the page can start the scan animation
-// right after the screenshot, without the animation ending up in the shot.
+// Çekim ve tespit ayrı mesajlar, böylece sayfa ekran görüntüsü alınır alınmaz
+// animasyonu başlatabiliyor ve animasyon görüntüye girmiyor.
 let lastShot: ImageBitmap | null = null;
 
 chrome.runtime.onMessage.addListener((msg: Request, sender, sendResponse: (reply: Reply<unknown>) => void) => {
@@ -21,7 +21,7 @@ async function handle(msg: Request, sender: chrome.runtime.MessageSender): Promi
     case "capture": {
       if (!sender.tab) throw new Error("no tab");
       const url = await chrome.tabs.captureVisibleTab(sender.tab.windowId, { format: "png" });
-      // not closing the old bitmap, a translation may still be reading it
+      // eski bitmap'i kapatmıyoruz, bir çeviri hâlâ onu okuyor olabilir
       lastShot = await createImageBitmap(await (await fetch(url)).blob());
       return null;
     }
@@ -48,7 +48,7 @@ async function handle(msg: Request, sender: chrome.runtime.MessageSender): Promi
       return null;
     }
     case "remember":
-      // the user fixed a bubble by hand, that wins over the model next time
+      // kullanıcı balonu elle düzeltti, bir dahakine modelinkinden önce bu gelsin
       await cacheSet(msg.key, msg.text);
       return null;
   }
@@ -82,7 +82,7 @@ function toggle(tabId: number | undefined) {
   if (tabId === undefined) return;
   const msg: TabMessage = { type: "toggle" };
   chrome.tabs.sendMessage(tabId, msg).catch(() => {
-    // tabs opened before install have no content script until reload
+    // kurulumdan önce açılan sekmelerde yenilenene kadar content script yok
   });
 }
 
@@ -95,7 +95,7 @@ chrome.runtime.onStartup.addListener(() => void pruneCache());
 
 chrome.runtime.onInstalled.addListener(async ({ reason }) => {
   if (reason !== "install") return;
-  // first run: ask for an API key right away
+  // ilk kurulum: hemen API anahtarı iste
   const s = await loadSettings();
   if (!s.claudeKey && !s.geminiKey) void chrome.runtime.openOptionsPage();
 });

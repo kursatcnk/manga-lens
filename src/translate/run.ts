@@ -7,14 +7,14 @@ import { JsonLines } from "./jsonl";
 import { buildRequest, type Extras } from "./prompt";
 import { modelOf, streamTranslation, TranslateError } from "./providers";
 
-// Every bubble gets its own request, all running side by side. Output length is
-// what makes it slow, so the page is done about when the slowest bubble is.
-// Gemini keys (free tier especially) have low requests-per-minute limits,
-// so there two bubbles share a request.
+// Her balon kendi isteğiyle gidiyor, hepsi aynı anda. Yavaşlatan şey cevabın uzunluğu,
+// sayfa da aşağı yukarı en yavaş balon bitince bitiyor.
+// Gemini anahtarlarının (özellikle ücretsiz olanın) dakikalık istek sınırı düşük,
+// orada iki balon bir istekte gidiyor.
 const GROUP = { claude: 1, gemini: 2 };
-// not too many at once either, rate limits kick in fast on new API keys
+// aynı anda çok da fazla olmasın, yeni anahtarlarda sınıra hemen takılıyor
 const PARALLEL = { claude: 6, gemini: 4 };
-// how many earlier lines go along as context
+// bağlam olarak önceki kaç satır gidiyor
 const RECENT = 8;
 
 type Regions = TranslateJob["regions"];
@@ -44,7 +44,7 @@ export async function translate(shot: ImageBitmap, job: TranslateJob, send: (m: 
     const glossary = await loadGlossary(job.series);
     const extras: Extras = { terms: glossary.terms, recent: glossary.recent, honorifics: settings.honorifics };
 
-    // already in reading order, so neighbours end up in the same group
+    // zaten okuma sırasında, yan yana balonlar aynı gruba düşüyor
     const size = GROUP[settings.provider];
     const groups: Regions[] = [];
     for (let i = 0; i < todo.length; i += size) groups.push(todo.slice(i, i + size));
@@ -64,7 +64,7 @@ export async function translate(shot: ImageBitmap, job: TranslateJob, send: (m: 
       if (text) void cacheSet(key, text);
     };
 
-    // simple pool: PARALLEL workers each take the next group until none are left
+    // basit havuz: her worker sıradaki grubu alıyor, grup kalmayınca bitiyor
     const results: PromiseSettledResult<void>[] = [];
     let next = 0;
     let stop = false;
@@ -76,7 +76,7 @@ export async function translate(shot: ImageBitmap, job: TranslateJob, send: (m: 
           try {
             await run();
           } catch (err) {
-            // hit the per-minute limit: wait a moment and give it one more go
+            // dakikalık sınıra takıldık: biraz bekle, bir kere daha dene
             if (!(err instanceof TranslateError && err.code === "rate")) throw err;
             await new Promise((r) => setTimeout(r, 2000));
             if (signal.aborted) return;
@@ -85,7 +85,7 @@ export async function translate(shot: ImageBitmap, job: TranslateJob, send: (m: 
           results.push({ status: "fulfilled", value: undefined });
         } catch (reason) {
           results.push({ status: "rejected", reason });
-          // a bad key fails every request the same way, no point in sending the rest
+          // anahtar yanlışsa her istek aynı hatayı verir, kalanları göndermeye gerek yok
           if (reason instanceof TranslateError && (reason.code === "auth" || reason.code === "no-key")) stop = true;
         }
       }
@@ -97,7 +97,7 @@ export async function translate(shot: ImageBitmap, job: TranslateJob, send: (m: 
       `[manga-lens] ${todo.length} bubbles in ${groups.length} requests, first after ${Math.round(first - started)}ms, all in ${Math.round(performance.now() - started)}ms`,
     );
 
-    // remember new names and the last lines for the next page of this series
+    // yeni isimleri ve son satırları serinin sonraki sayfası için kaydet
     const lines = todo.map((r) => texts.get(r.id)).filter((t): t is string => !!t);
     if (lines.length || names.length) {
       const fresh = await loadGlossary(job.series);
@@ -107,8 +107,8 @@ export async function translate(shot: ImageBitmap, job: TranslateJob, send: (m: 
       });
     }
 
-    // one bubble failing shouldn't throw away the others, but if all of them failed
-    // (or a bad key stopped everything) say why
+    // bir balon hata verdi diye diğerlerini çöpe atma, ama hepsi hata verdiyse
+    // (ya da yanlış anahtar her şeyi durdurduysa) sebebini söyle
     const failed = results.filter((r): r is PromiseRejectedResult => r.status === "rejected");
     if (failed.length && (failed.length === results.length || stop)) throw failed[0].reason;
     if (failed.length) console.error("[manga-lens] some requests failed", failed.map((f) => f.reason));
@@ -140,7 +140,7 @@ async function translateGroup(
       onName([name, as]);
       return;
     }
-    // ids in the prompt are 1-based positions in this group
+    // prompt'taki id'ler bu gruptaki 1'den başlayan sıra
     const region = typeof id === "number" ? job.regions[id - 1] : undefined;
     if (!region || typeof text !== "string") return;
     got++;
@@ -154,6 +154,6 @@ async function translateGroup(
   parser.end();
   void addUsage(modelOf(settings), tokens.input, tokens.output, got);
 
-  // nothing came back in the expected format, keep the answer around for debugging
+  // beklenen formatta hiçbir şey gelmedi, hata ayıklamak için cevabı yazdır
   if (!got) console.warn("[manga-lens] no usable lines in answer:", raw.slice(0, 500));
 }

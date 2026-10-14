@@ -1,5 +1,5 @@
-// Parses the model's answer as it streams in: one JSON object per line.
-// Models sometimes wrap it in ```json fences or a [ ... ] array, so be lenient.
+// Modelin cevabını gelirken okuyor: her satırda bir JSON nesnesi.
+// Modeller bazen ```json içine ya da [ ... ] dizisine sarıyor, o yüzden esnek.
 export class JsonLines {
   private buf = "";
 
@@ -22,13 +22,13 @@ export class JsonLines {
   private line(raw: string) {
     let s = raw.trim().replace(/^[[,]\s*/, "").replace(/[,\]]\s*$/, "");
     if (!s.startsWith("{")) return;
-    // two objects glued on one line
+    // aynı satıra yapışmış iki nesne
     s = s.replace(/}\s*{/g, "}\n{");
     for (const part of s.split("\n")) {
       try {
         this.onItem(JSON.parse(part));
       } catch {
-        // half a line or junk, skip
+        // yarım satır ya da çöp, geç
       }
     }
   }
